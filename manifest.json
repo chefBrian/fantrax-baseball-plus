@@ -1,0 +1,31 @@
+{
+  "manifest_version": 2,
+  "name": "One Constant Firefox",
+  "version": "1.0.0",
+  "description": "Adds Baseball Reference, Statcast, and MLB Video links to Fantrax player pages",
+  "permissions": [
+    "https://fastball-gateway.mlb.com/*",
+    "https://statsapi.mlb.com/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.fantrax.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "one-constant-firefox@example.com",
+      "strict_min_version": "109.0"
+    }
+  }
+}
