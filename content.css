@@ -1,0 +1,323 @@
+/* Small link badges on the position line (roster, matchup, players) */
+.ocf-links--sm {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+
+.ocf-links--sm .ocf-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none !important;
+  cursor: pointer;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.ocf-links--sm .ocf-link .mat-icon {
+  font-size: 12px;
+  width: 12px;
+  height: 12px;
+  color: inherit;
+}
+
+/* Large variant for modal - inline after player name */
+.ocf-links--lg {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+.ocf-links--lg .ocf-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none !important;
+  cursor: pointer;
+  opacity: 0.8;
+  user-select: none;
+}
+
+.ocf-links--lg .ocf-link .mat-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  color: inherit;
+}
+
+/* Shared */
+.ocf-link {
+  color: #8ab4f8 !important;
+}
+
+.ocf-link:hover {
+  opacity: 1;
+  text-decoration: none !important;
+}
+
+.ocf-link--loading {
+  opacity: 0.4;
+  cursor: wait;
+}
+
+/* =============================================
+   Video Modal - player + sidebar list
+   Fantrax tokens: bg #191c1f, surface #22262b,
+   accent #49a3fd, muted rgba(255,255,255,0.62),
+   font Poppins, pill radius 15px
+   ============================================= */
+
+.ocf-video-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.ocf-video-modal--visible {
+  opacity: 1;
+}
+
+.ocf-video-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.ocf-video-modal__container {
+  position: relative;
+  width: 92%;
+  max-width: 1440px;
+  background: #191c1f;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: Poppins, sans-serif;
+}
+
+/* Header */
+.ocf-video-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #22262b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.ocf-video-modal__header-icon {
+  font-size: 18px !important;
+  width: 18px !important;
+  height: 18px !important;
+  color: #49a3fd !important;
+}
+
+.ocf-video-modal__title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ocf-video-modal__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.62);
+  transition: color 0.15s, background 0.15s;
+}
+
+.ocf-video-modal__close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ocf-video-modal__close .mat-icon {
+  font-size: 18px !important;
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Two-column layout: player left, list right */
+.ocf-video-modal__layout {
+  position: relative;
+  margin-right: 300px;
+}
+
+/* Player side */
+.ocf-video-modal__body {
+  display: flex;
+  flex-direction: column;
+  background: #000;
+}
+
+.ocf-video-modal__player-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%; /* 16:9 */
+  background: #000;
+}
+
+.ocf-video-modal__player {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  background: #000;
+}
+
+.ocf-video-modal__footer {
+  padding: 6px 14px;
+  background: #22262b;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.ocf-video-modal__date {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+/* Sidebar video list - absolutely positioned, height matches video body */
+.ocf-video-modal__sidebar {
+  position: absolute;
+  top: 0;
+  right: -300px;
+  width: 300px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: #191c1f;
+  overflow: hidden;
+}
+
+.ocf-video-modal__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+/* List item */
+.ocf-video-modal__list-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  align-items: flex-start;
+}
+
+.ocf-video-modal__list-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ocf-video-modal__list-item--active {
+  background: rgba(73, 163, 253, 0.1);
+  border-left: 2px solid #49a3fd;
+}
+
+.ocf-video-modal__list-thumb {
+  position: relative;
+  width: 100px;
+  min-width: 100px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #090a0b;
+}
+
+.ocf-video-modal__list-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ocf-video-modal__list-duration {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  background: rgba(0, 0, 0, 0.8);
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 9px;
+  font-weight: 500;
+  padding: 1px 4px;
+  border-radius: 2px;
+  letter-spacing: 0.3px;
+}
+
+.ocf-video-modal__list-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.ocf-video-modal__list-title {
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.84);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ocf-video-modal__list-date {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+/* Spinner */
+.ocf-video-modal__loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.ocf-video-modal__spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-top-color: #49a3fd;
+  border-radius: 50%;
+  animation: ocf-spin 0.7s linear infinite;
+}
+
+@keyframes ocf-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ocf-video-modal__empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+}
+
