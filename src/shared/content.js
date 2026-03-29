@@ -198,25 +198,59 @@
     const modal = document.querySelector(".ocf-video-modal");
     if (modal) {
       const player = modal.querySelector(".ocf-video-modal__player");
-      if (player) player.pause();
+      if (player) {
+        player.pause();
+        if (player._blobUrl) URL.revokeObjectURL(player._blobUrl);
+      }
       modal.classList.remove("ocf-video-modal--visible");
       setTimeout(() => modal.remove(), 200);
     }
   }
 
-  function selectVideo(modal, video) {
+  async function selectVideo(modal, video) {
     const player = modal.querySelector(".ocf-video-modal__player");
     const title = modal.querySelector(".ocf-video-modal__title");
     const date = modal.querySelector(".ocf-video-modal__date");
 
-    player.src = video.videoUrl;
-    player.play();
+    // Revoke previous blob URL to free memory
+    if (player._blobUrl) {
+      URL.revokeObjectURL(player._blobUrl);
+      player._blobUrl = null;
+    }
+
     title.textContent = video.title;
     date.textContent = video.date;
 
     modal.querySelectorAll(".ocf-video-modal__list-item").forEach((item) => {
       item.classList.toggle("ocf-video-modal__list-item--active", item.dataset.videoId === video.id);
     });
+
+    let src = video.videoUrl;
+
+    // Proxy fastball-clips through background script to set required headers
+    if (src.includes("fastball-clips.mlb.com")) {
+      try {
+        const result = await browser.runtime.sendMessage({
+          type: "ocf-fetch-video-blob",
+          url: src,
+        });
+        if (result.ok) {
+          const binary = atob(result.data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: "video/mp4" });
+          src = URL.createObjectURL(blob);
+          player._blobUrl = src;
+        }
+      } catch (e) {
+        console.warn("[OCF] Video proxy failed:", e);
+      }
+    }
+
+    player.src = src;
+    player.play().catch(() => {});
   }
 
   function appendVideoItems(container, videos, modal) {
@@ -281,7 +315,6 @@
               <video
                 class="ocf-video-modal__player"
                 controls
-                autoplay
                 playsinline
               ></video>
             </div>
