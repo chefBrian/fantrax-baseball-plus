@@ -63,6 +63,30 @@
   cursor: wait;
 }
 
+/* Live game indicator */
+.ocf-link--live {
+  color: #ef4444 !important;
+  opacity: 1;
+  position: relative;
+}
+
+.ocf-link--live::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 5px;
+  height: 5px;
+  background: #ef4444;
+  border-radius: 50%;
+  animation: ocf-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes ocf-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
 /* =============================================
    Video Modal - player + sidebar list
    Fantrax tokens: bg #191c1f, surface #22262b,
