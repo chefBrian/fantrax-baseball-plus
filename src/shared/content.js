@@ -8,6 +8,60 @@
   const VIDEOS_PER_PAGE = 25;
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
+  let scheduleData = null;
+  let scheduleTime = 0;
+  const SCHEDULE_TTL = 120000; // 2 minutes
+
+  // Map abbreviated names ("C. Emerson") -> full names ("Corbin Emerson")
+  const abbrNameMap = new Map();
+  let abbrFetched = false;
+
+  async function fetchScorerNames() {
+    if (abbrFetched) return;
+    abbrFetched = true;
+
+    // Extract league ID from the current URL
+    const leagueMatch = location.pathname.match(/\/league\/([^/]+)/);
+    if (!leagueMatch) return;
+    const leagueId = leagueMatch[1];
+
+    try {
+      const resp = await fetch(`/fxpa/req?leagueId=${leagueId}`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          msgs: [{ method: "getTransactionDetailsHistory", data: {} }],
+          uiv: 3,
+        }),
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+
+      // Walk the response to find scorer objects with scorerId + name
+      let added = false;
+      function walk(obj) {
+        if (!obj || typeof obj !== "object") return;
+        if (Array.isArray(obj)) { obj.forEach(walk); return; }
+        if (obj.scorerId && obj.name) {
+          const parts = obj.name.split(/\s+/);
+          if (parts.length >= 2) {
+            const abbr = parts[0][0] + ". " + parts.slice(1).join(" ");
+            if (!abbrNameMap.has(abbr)) {
+              abbrNameMap.set(abbr, obj.name);
+              added = true;
+            }
+          }
+        }
+        for (const v of Object.values(obj)) {
+          if (typeof v === "object") walk(v);
+        }
+      }
+      walk(data);
+      if (added) scanAndInject();
+    } catch (e) {
+      console.warn("[OCF] Scorer name fetch failed:", e);
+    }
+  }
 
   // Strip Fantrax suffixes like "-P", "-H", "-DH" from player names (e.g. "Shohei Ohtani-P")
   function cleanPlayerName(name) {
@@ -33,6 +87,60 @@
       console.warn("[OCF] MLB ID lookup failed for", playerName, e);
     }
     return null;
+  }
+
+  async function fetchTodaySchedule() {
+    const now = Date.now();
+    if (scheduleData && (now - scheduleTime) < SCHEDULE_TTL) return scheduleData;
+    try {
+      const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
+      const resp = await fetch(
+        `https://statsapi.mlb.com/api/v1/schedule?date=${today}&sportId=1&hydrate=team`
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const games = data.dates?.[0]?.games || [];
+      const map = new Map();
+      for (const game of games) {
+        const isLive = game.status.abstractGameState === "Live";
+        const info = { gamePk: game.gamePk, isLive };
+        for (const side of ["away", "home"]) {
+          const team = game.teams[side].team;
+          map.set(team.abbreviation, info);
+          map.set(team.name, info);
+        }
+      }
+      scheduleData = map;
+      scheduleTime = now;
+      return map;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function maybeAddLiveIcon(container, teamStr) {
+    if (!teamStr) return;
+    const schedule = await fetchTodaySchedule();
+    if (!schedule) return;
+
+    const game = schedule.get(teamStr);
+    if (!game || !game.isLive) return;
+
+    // Don't duplicate
+    if (container.querySelector(".ocf-link--live")) return;
+
+    const a = document.createElement("a");
+    a.className = "ocf-link ocf-link--live";
+    a.title = "Watch Live on MLB.tv";
+    a.href = `https://www.mlb.com/tv/g${game.gamePk}`;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    const i = document.createElement("mat-icon");
+    i.className = "mat-icon material-icons";
+    i.textContent = "live_tv";
+    a.appendChild(i);
+    a.addEventListener("click", (e) => e.stopPropagation());
+    container.appendChild(a);
   }
 
   function makeUrlName(name) {
@@ -301,7 +409,7 @@
       <div class="ocf-video-modal__backdrop"></div>
       <div class="ocf-video-modal__container">
         <div class="ocf-video-modal__header">
-          <mat-icon class="mat-icon material-icons ocf-video-modal__header-icon">videocam</mat-icon>
+          <mat-icon class="mat-icon material-icons ocf-video-modal__header-icon">play_circle</mat-icon>
           <span class="ocf-video-modal__date"></span>
           <span class="ocf-video-modal__title">${escapeHtml(playerName)}</span>
           <div class="ocf-video-modal__filters"></div>
@@ -453,13 +561,6 @@
     btn.classList.remove("ocf-link--loading");
 
     switch (type) {
-      case "bbref":
-        openLink(
-          mlbId
-            ? `https://www.baseball-reference.com/redirect.fcgi?player=1&mlb_ID=${mlbId}`
-            : `https://www.baseball-reference.com/search/search.fcgi?search=${encodeURIComponent(playerName)}`
-        );
-        break;
       case "statcast": {
         const statType = isPitcher(positionText) ? "pitching" : "hitting";
         openLink(
@@ -480,9 +581,8 @@
     container.className = size === "lg" ? "ocf-links--lg" : "ocf-links--sm";
 
     const links = [
-      { type: "bbref", icon: "sports_baseball", title: "Baseball Reference" },
       { type: "statcast", icon: "insights", title: "Statcast" },
-      { type: "video", icon: "videocam", title: "MLB Video" },
+      { type: "video", icon: "play_circle", title: "MLB Video" },
     ];
 
     for (const { type, icon, title } of links) {
@@ -514,14 +614,31 @@
     return null;
   }
 
+  function getTeamFromScorer(scorerEl) {
+    const posDiv = scorerEl?.querySelector(".scorer__info__positions");
+    if (!posDiv) return null;
+    const teamSpan = posDiv.querySelector("span.mat-mdc-tooltip-trigger");
+    if (!teamSpan) return null;
+    return teamSpan.textContent.replace(/^[\s-]+/, "").trim();
+  }
+
   function processTablePlayers() {
     const nameLinks = document.querySelectorAll(
       `.scorer__info__name > a`
     );
 
     for (const nameLink of nameLinks) {
-      const playerName = cleanPlayerName(nameLink.textContent.trim());
+      let playerName = cleanPlayerName(nameLink.textContent.trim());
       if (!playerName || playerName.split(/\s+/).length < 2) continue;
+      // Resolve abbreviated names (e.g. "C. Emerson" -> "Corbin Emerson")
+      if (/^[A-Z]\./.test(playerName)) {
+        const fullName = abbrNameMap.get(playerName);
+        if (!fullName) {
+          fetchScorerNames(); // Triggers API call + re-scan on first encounter
+          continue;
+        }
+        playerName = fullName;
+      }
 
       const prevName = nameLink.getAttribute(PROCESSED_ATTR);
       if (prevName === playerName) continue;
@@ -538,8 +655,10 @@
 
       const scorerEl = nameLink.closest("scorer") || nameLink.closest(".scorer");
       const positionText = scorerEl ? getPositionFromScorer(scorerEl) : null;
+      const teamAbbr = scorerEl ? getTeamFromScorer(scorerEl) : null;
 
       const links = buildLinks(playerName, positionText, "sm");
+      maybeAddLiveIcon(links, teamAbbr);
 
       // Insert into .scorer__info__positions if it exists, otherwise after name
       const scorerInfo = nameLink.closest(".scorer__info");
@@ -584,16 +703,24 @@
       header.setAttribute(PROCESSED_ATTR, playerName);
 
       let positionText = null;
+      let teamName = null;
       const pEl = titleDiv.querySelector("p");
       if (pEl) {
         const posSpan = pEl.querySelector("span:not([class])");
         if (posSpan) positionText = posSpan.textContent.trim();
+        // Team name is the text node before the first span (e.g. "Baltimore Orioles")
+        const firstChild = pEl.firstChild;
+        if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
+          teamName = firstChild.textContent.trim();
+        }
       }
 
       const links = buildLinks(playerName, positionText, "lg");
 
       // Insert right after the player name in h1
       nameLink.after(links);
+
+      maybeAddLiveIcon(links, teamName);
     }
   }
 
