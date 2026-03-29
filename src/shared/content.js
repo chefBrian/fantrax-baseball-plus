@@ -102,7 +102,7 @@
       const games = data.dates?.[0]?.games || [];
       const map = new Map();
       for (const game of games) {
-        const isLive = game.status.abstractGameState === "Live";
+        const isLive = game.status.detailedState === "In Progress";
         const info = { gamePk: game.gamePk, isLive };
         for (const side of ["away", "home"]) {
           const team = game.teams[side].team;
