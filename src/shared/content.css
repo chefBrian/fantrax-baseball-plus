@@ -88,6 +88,223 @@
 }
 
 /* =============================================
+   Statcast Percentile Panel
+   ============================================= */
+
+.ocf-statcast-panel {
+  position: fixed;
+  z-index: 10000;
+  width: 340px;
+  background: #1a1d21;
+  border: 2px solid rgb(20, 184, 166);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  font-family: Poppins, sans-serif;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+/* Header */
+.ocf-statcast-header {
+  padding: 12px 14px 0;
+  position: sticky;
+  top: 0;
+  background: #1a1d21;
+  z-index: 1;
+}
+
+.ocf-statcast-header-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ocf-statcast-year {
+  background: #22262b;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+}
+
+.ocf-statcast-year:focus {
+  border-color: #49a3fd;
+}
+
+.ocf-statcast-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.ocf-statcast-savant-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #8ab4f8 !important;
+  text-decoration: none !important;
+  opacity: 0.7;
+}
+
+.ocf-statcast-savant-link:hover {
+  opacity: 1;
+}
+
+/* Axis labels */
+.ocf-statcast-axis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ocf-statcast-axis .ocf-statcast-label {
+  width: 90px;
+  min-width: 90px;
+}
+
+.ocf-statcast-axis-labels {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.ocf-statcast-axis--poor { color: #4488c4; }
+.ocf-statcast-axis--avg  { color: rgba(255, 255, 255, 0.35); }
+.ocf-statcast-axis--great { color: #c6463a; }
+
+/* Body */
+.ocf-statcast-body {
+  padding: 0 14px 14px;
+}
+
+.ocf-statcast-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 10px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Stat rows */
+.ocf-statcast-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2.5px 0;
+}
+
+.ocf-statcast-label {
+  width: 90px;
+  min-width: 90px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ocf-statcast-track {
+  flex: 1;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 2px;
+  position: relative;
+  overflow: visible;
+}
+
+.ocf-statcast-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.ocf-statcast-pct {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  border: 2px solid #1a1d21;
+  z-index: 1;
+  transition: left 0.3s ease, background-color 0.3s ease;
+}
+
+.ocf-statcast-label--nq {
+  opacity: 0.3;
+}
+
+.ocf-statcast-label--qualified {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.ocf-statcast-label--nq + .ocf-statcast-track::after {
+  content: "NOT QUALIFIED";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.2);
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.ocf-statcast-skeleton {
+  height: 100%;
+  width: 60%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: ocf-shimmer 1.5s ease infinite;
+}
+
+@keyframes ocf-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.ocf-statcast-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgb(20, 184, 166);
+  border-radius: 50%;
+  animation: ocf-spin 0.7s linear infinite;
+}
+
+.ocf-statcast-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 11px;
+}
+
+/* =============================================
    Video Modal - player + sidebar list
    Fantrax tokens: bg #191c1f, surface #22262b,
    accent #49a3fd, muted rgba(255,255,255,0.62),
