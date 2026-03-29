@@ -268,7 +268,10 @@
     const existing = document.querySelector(".ocf-statcast-panel");
     if (existing) {
       if (existing._checkInterval) clearInterval(existing._checkInterval);
-      if (existing._resizeHandler) window.removeEventListener("resize", existing._resizeHandler);
+      if (existing._resizeHandler) {
+        window.removeEventListener("resize", existing._resizeHandler);
+        window.removeEventListener("scroll", existing._resizeHandler, true);
+      }
       existing.remove();
     }
   }
@@ -455,6 +458,7 @@
       if (document.contains(container || header)) updatePosition();
     };
     window.addEventListener("resize", resizeHandler);
+    window.addEventListener("scroll", resizeHandler, true);
     panel._resizeHandler = resizeHandler;
 
     // Fetch data (panel already visible with spinner)
