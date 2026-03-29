@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        { "header": "Referer", "operation": "set", "value": "https://www.mlb.com/" },
+        { "header": "Origin", "operation": "set", "value": "https://www.mlb.com" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||fastball-clips.mlb.com",
+      "resourceTypes": ["xmlhttprequest", "media", "other"]
+    }
+  }
+]

@@ -1,6 +1,6 @@
-# oneConstantFirefox
+# Fantrax+
 
-Firefox extension that adds quick-access links to Fantrax fantasy baseball player pages.
+Browser extension that adds quick-access links to Fantrax fantasy baseball player pages. Available for Chrome and Firefox.
 
 ## Features
 
@@ -24,10 +24,18 @@ Clicking the video icon opens a modal with:
 
 ## Install
 
+### Chrome Web Store
+<!-- TODO: Add Chrome Web Store link after publishing -->
+
+### Firefox Add-ons
+<!-- TODO: Add AMO link after publishing -->
+
+### Manual / Development
+
 1. Clone the repo
-2. Open `about:debugging#/runtime/this-firefox` in Firefox
-3. Click **Load Temporary Add-on**
-4. Select `manifest.json`
+2. Run `./build.sh` to generate browser packages in `dist/`
+3. **Chrome**: Go to `chrome://extensions/`, enable Developer mode, click "Load unpacked", select `dist/chrome/`
+4. **Firefox**: Go to `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on", select `dist/firefox/manifest.json`
 
 ## How It Works
 
@@ -36,4 +44,21 @@ Clicking the video icon opens a modal with:
 - Videos are fetched from the MLB Film Room GraphQL API (`fastball-gateway.mlb.com`) via the background script
 - Hitter videos use structured queries with `HitResult` and `HitDistance` filters
 - Pitcher highlights use FREETEXT search; strikeout/HR filters use structured queries
-- Background script injects `Referer` headers for `fastball-clips.mlb.com` video playback via `webRequest` API
+- `declarativeNetRequest` rules inject headers for `fastball-clips.mlb.com` video playback
+
+## Project Structure
+
+```
+src/
+  background.js          # Shared background script (GraphQL proxy)
+  shared/
+    content.js           # Content script injected into Fantrax pages
+    content.css          # Styles for injected links and video modal
+    icons/               # Extension icons (16, 48, 96, 128px)
+  chrome/
+    manifest.json        # Chrome MV3 manifest (service worker)
+    rules.json           # declarativeNetRequest header rules
+  firefox/
+    manifest.json        # Firefox MV3 manifest (event page)
+build.sh                 # Builds dist/chrome/ and dist/firefox/ zips
+```

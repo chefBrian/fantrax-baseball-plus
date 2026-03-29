@@ -1,6 +1,8 @@
 (function () {
   "use strict";
 
+  const browser = globalThis.browser || globalThis.chrome;
+
   const PROCESSED_ATTR = "data-ocf-links";
   const MLB_SEARCH_API = "https://statsapi.mlb.com/api/v1/people/search?names=";
   const VIDEOS_PER_PAGE = 25;
