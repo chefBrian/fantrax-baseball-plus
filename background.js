@@ -1,3 +1,17 @@
+// Modify headers for fastball-clips.mlb.com video requests so <video> can load them
+browser.webRequest.onBeforeSendHeaders.addListener(
+  (details) => {
+    const headers = details.requestHeaders.filter(
+      (h) => h.name.toLowerCase() !== "origin" && h.name.toLowerCase() !== "referer"
+    );
+    headers.push({ name: "Referer", value: "https://www.mlb.com/" });
+    headers.push({ name: "Origin", value: "https://www.mlb.com" });
+    return { requestHeaders: headers };
+  },
+  { urls: ["https://fastball-clips.mlb.com/*"] },
+  ["blocking", "requestHeaders"]
+);
+
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== "ocf-fetch-videos") return false;
 

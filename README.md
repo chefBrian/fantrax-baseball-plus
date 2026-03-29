@@ -6,7 +6,7 @@ Firefox extension that adds quick-access links to Fantrax fantasy baseball playe
 
 - **Baseball Reference** - direct link via MLB ID, with search fallback
 - **Statcast** - links to Baseball Savant player page
-- **MLB Video** - inline video modal with auto-play and infinite scroll sidebar
+- **MLB Video** - inline video modal with filtered highlights
 
 Links appear in two places:
 - **Player modals** - larger icons next to the player name
@@ -15,9 +15,12 @@ Links appear in two places:
 ### Video Modal
 
 Clicking the video icon opens a modal with:
-- 16:9 video player on the left, auto-playing the first result
-- Scrollable video list on the right with infinite scroll
-- Auto-advances to the next video when the current one ends
+- 16:9 video player with auto-play
+- Scrollable video list sidebar with infinite scroll
+- Auto-advances to the next video when current one ends
+- Filter buttons in the header bar:
+  - **Hitters**: All BIP (balls in play), Hits, Home Runs
+  - **Pitchers**: All Highlights, Strikeouts, HRs Against
 
 ## Install
 
@@ -30,4 +33,7 @@ Clicking the video icon opens a modal with:
 
 - Content script injects links into Fantrax DOM elements via a MutationObserver
 - MLB player IDs are looked up via the [MLB Stats API](https://statsapi.mlb.com/api/v1/people/search)
-- Videos are fetched from the MLB GraphQL API via the background script (to handle CORS)
+- Videos are fetched from the MLB Film Room GraphQL API (`fastball-gateway.mlb.com`) via the background script
+- Hitter videos use structured queries with `HitResult` and `HitDistance` filters
+- Pitcher highlights use FREETEXT search; strikeout/HR filters use structured queries
+- Background script injects `Referer` headers for `fastball-clips.mlb.com` video playback via `webRequest` API

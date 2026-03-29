@@ -3,9 +3,14 @@
 
   const PROCESSED_ATTR = "data-ocf-links";
   const MLB_SEARCH_API = "https://statsapi.mlb.com/api/v1/people/search?names=";
-  const VIDEOS_PER_PAGE = 10;
+  const VIDEOS_PER_PAGE = 25;
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
+
+  // Strip Fantrax suffixes like "-P", "-H", "-DH" from player names (e.g. "Shohei Ohtani-P")
+  function cleanPlayerName(name) {
+    return name.replace(/-(P|H|DH)$/i, "").trim();
+  }
 
   async function lookupMlbId(playerName) {
     if (mlbIdCache.has(playerName)) {
@@ -40,53 +45,133 @@
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  // --- MLB Video API ---
+  // --- MLB Video API (GraphQL) ---
 
-  function buildVideoQuery(queryType) {
-    return `query Search($query: String!, $page: Int, $limit: Int) {
-      search(query: $query, limit: $limit, page: $page, queryType: ${queryType}) {
-        total
-        plays {
-          mediaPlayback {
-            id
-            title
-            slug
-            date
-            feeds {
-              type
-              duration
-              playbacks { name url }
-              image { cuts { src width height } }
-            }
+  function isPitcher(positionText) {
+    if (!positionText) return false;
+    const positions = positionText.split(/[,/]/).map((p) => p.trim().toUpperCase());
+    return positions.some((p) => p === "SP" || p === "RP" || p === "P");
+  }
+
+  const VIDEO_GQL_QUERY = `query Search($query: String!, $page: Int, $limit: Int, $feedPreference: FeedPreference, $languagePreference: LanguagePreference, $contentPreference: ContentPreference, $queryType: QueryType) {
+    search(query: $query, limit: $limit, page: $page, feedPreference: $feedPreference, languagePreference: $languagePreference, contentPreference: $contentPreference, queryType: $queryType) {
+      total
+      plays {
+        mediaPlayback {
+          id
+          title
+          slug
+          date
+          feeds {
+            type
+            duration
+            playbacks { name url }
+            image { cuts { src width height } }
           }
         }
       }
-    }`;
+    }
+  }`;
+
+  const HITTER_FILTERS = {
+    "all-bip": {
+      label: "All BIP",
+      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Hit","Out","Error"] AND HitDistance = {{ 5, 790 }} Order By Timestamp DESC',
+    },
+    "hits": {
+      label: "Hits",
+      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Hit"] AND HitDistance = {{ 5, 790 }} Order By Timestamp DESC',
+    },
+    "hr": {
+      label: "Home Runs",
+      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Home Run"] AND HitDistance = {{ 5, 790 }} Order By Timestamp DESC',
+    },
+  };
+
+  const PITCHER_FILTERS = {
+    "all": {
+      label: "All Highlights",
+      query: (id) => 'PitcherId = [' + id + '] Order By Timestamp DESC',
+    },
+    "strikeouts": {
+      label: "Strikeouts",
+      query: (id) => 'PitcherId = [' + id + '] AND HitResult = ["Strikeout"] Order By Timestamp DESC',
+    },
+    "hr-against": {
+      label: "HRs Against",
+      query: (id) => 'PitcherId = [' + id + '] AND HitResult = ["Home Run"] Order By Timestamp DESC',
+    },
+  };
+
+  function getFilters(positionText) {
+    return isPitcher(positionText) ? PITCHER_FILTERS : HITTER_FILTERS;
   }
 
-  async function doVideoFetch(searchQuery, queryType, page) {
+  function getDefaultFilter(positionText) {
+    return isPitcher(positionText) ? "all" : "all-bip";
+  }
+
+  async function doVideoFetch(query, page, queryType) {
+    const isFreetext = queryType === "FREETEXT";
     const result = await browser.runtime.sendMessage({
       type: "ocf-fetch-videos",
-      gqlQuery: buildVideoQuery(queryType),
-      variables: { query: searchQuery, page, limit: VIDEOS_PER_PAGE },
+      gqlQuery: VIDEO_GQL_QUERY,
+      variables: {
+        query,
+        page,
+        limit: VIDEOS_PER_PAGE,
+        languagePreference: "EN",
+        contentPreference: isFreetext ? "CMS_FIRST" : "MIXED",
+        ...(queryType ? { queryType } : {}),
+      },
     });
 
     if (!result.ok) throw new Error(result.error);
     return result.data.data.search;
   }
 
-  async function fetchVideos(playerName, page = 1) {
-    const search = await doVideoFetch(playerName, "FREETEXT", page);
+  async function fetchVideos(playerName, page = 1, { mlbId, positionText, filter } = {}) {
+    if (!mlbId) return { videos: [], total: 0 };
+
+    const filters = getFilters(positionText);
+    const query = filters[filter].query(mlbId);
+    const search = await doVideoFetch(query, page - 1);
 
     const videos = (search.plays || []).map((play) => {
       const mp = play.mediaPlayback?.[0];
       if (!mp) return null;
 
-      const cmsFeed = mp.feeds?.find((f) => f.type === "CMS") || mp.feeds?.[0];
-      if (!cmsFeed) return null;
+      const feeds = mp.feeds || [];
 
-      const mp4 = cmsFeed.playbacks?.find((p) => p.name === "mp4Avc");
-      const thumb = cmsFeed.image?.cuts
+      // Find a playable mp4 URL across all feeds, preferring mp4Avc
+      let videoUrl = null;
+      let bestFeed = null;
+      for (const feed of feeds) {
+        const playbacks = feed.playbacks || [];
+        const mp4 = playbacks.find((p) => p.name === "mp4Avc")
+          || playbacks.find((p) => p.name?.startsWith("mp4"))
+          || playbacks.find((p) => p.url?.endsWith(".mp4"));
+        if (mp4) {
+          videoUrl = mp4.url;
+          bestFeed = feed;
+          break;
+        }
+      }
+
+      if (!videoUrl) {
+        for (const feed of feeds) {
+          if (feed.playbacks?.[0]?.url) {
+            videoUrl = feed.playbacks[0].url;
+            bestFeed = feed;
+            break;
+          }
+        }
+      }
+
+      if (!videoUrl) return null;
+
+      const thumbFeed = bestFeed || feeds[0];
+      const thumb = thumbFeed?.image?.cuts
         ?.filter((c) => c.width >= 300 && c.width <= 700)
         .sort((a, b) => a.width - b.width)[0];
 
@@ -94,9 +179,9 @@
         id: mp.id,
         title: mp.title || "Untitled",
         date: mp.date || "",
-        duration: cmsFeed.duration || "",
-        videoUrl: mp4?.url || cmsFeed.playbacks?.[0]?.url,
-        thumbUrl: thumb?.src || cmsFeed.image?.cuts?.[0]?.src,
+        duration: bestFeed?.duration || "",
+        videoUrl,
+        thumbUrl: thumb?.src || thumbFeed?.image?.cuts?.[0]?.src,
       };
     }).filter(Boolean);
 
@@ -168,7 +253,7 @@
     return dur;
   }
 
-  async function showVideoModal(playerName) {
+  async function showVideoModal(playerName, { mlbId, positionText } = {}) {
     removeModal();
 
     const overlay = document.createElement("div");
@@ -179,7 +264,9 @@
       <div class="ocf-video-modal__container">
         <div class="ocf-video-modal__header">
           <mat-icon class="mat-icon material-icons ocf-video-modal__header-icon">videocam</mat-icon>
+          <span class="ocf-video-modal__date"></span>
           <span class="ocf-video-modal__title">${escapeHtml(playerName)}</span>
+          <div class="ocf-video-modal__filters"></div>
           <button class="ocf-video-modal__close" title="Close">
             <mat-icon class="mat-icon material-icons">close</mat-icon>
           </button>
@@ -193,9 +280,6 @@
                 autoplay
                 playsinline
               ></video>
-            </div>
-            <div class="ocf-video-modal__footer">
-              <span class="ocf-video-modal__date"></span>
             </div>
           </div>
           <div class="ocf-video-modal__sidebar">
@@ -232,9 +316,9 @@
     });
 
     let currentPage = 0;
-    let totalResults = 0;
     let loading = false;
     let exhausted = false;
+    let activeFilter = getDefaultFilter(positionText);
 
     const list = overlay.querySelector(".ocf-video-modal__list");
 
@@ -242,7 +326,6 @@
       if (loading || exhausted) return;
       loading = true;
 
-      // Show spinner at the bottom of the list
       const spinner = document.createElement("div");
       spinner.className = "ocf-video-modal__loader";
       spinner.innerHTML = `<div class="ocf-video-modal__spinner"></div>`;
@@ -250,13 +333,13 @@
 
       try {
         currentPage++;
-        const result = await fetchVideos(playerName, currentPage);
-        totalResults = result.total;
-
+        const result = await fetchVideos(playerName, currentPage, { mlbId, positionText, filter: activeFilter });
         spinner.remove();
 
-        if (result.videos.length === 0 && currentPage === 1) {
-          list.innerHTML = `<div class="ocf-video-modal__empty">No videos found</div>`;
+        if (result.videos.length === 0) {
+          if (allVideos.length === 0) {
+            list.innerHTML = `<div class="ocf-video-modal__empty">No videos found</div>`;
+          }
           exhausted = true;
           return;
         }
@@ -268,7 +351,7 @@
           selectVideo(overlay, result.videos[0]);
         }
 
-        if (allVideos.length >= totalResults) {
+        if (result.videos.length < VIDEOS_PER_PAGE) {
           exhausted = true;
         }
       } catch (e) {
@@ -287,6 +370,35 @@
         loadMore();
       }
     });
+
+    // Filter buttons
+    const filtersDiv = overlay.querySelector(".ocf-video-modal__filters");
+    {
+      const filters = getFilters(positionText);
+      for (const [key, { label }] of Object.entries(filters)) {
+        const btn = document.createElement("button");
+        btn.className = "ocf-video-modal__filter-btn" + (key === activeFilter ? " ocf-video-modal__filter-btn--active" : "");
+        btn.textContent = label;
+        btn.addEventListener("click", () => {
+          if (key === activeFilter) return;
+          activeFilter = key;
+          // Reset state
+          currentPage = 0;
+          allVideos = [];
+          exhausted = false;
+          list.innerHTML = "";
+          player.removeAttribute("src");
+          overlay.querySelector(".ocf-video-modal__title").textContent = playerName;
+          overlay.querySelector(".ocf-video-modal__date").textContent = "";
+          // Update active button
+          filtersDiv.querySelectorAll(".ocf-video-modal__filter-btn").forEach((b) => {
+            b.classList.toggle("ocf-video-modal__filter-btn--active", b === btn);
+          });
+          loadMore(true);
+        });
+        filtersDiv.appendChild(btn);
+      }
+    }
 
     loadMore(true);
   }
@@ -311,15 +423,17 @@
             : `https://www.baseball-reference.com/search/search.fcgi?search=${encodeURIComponent(playerName)}`
         );
         break;
-      case "statcast":
+      case "statcast": {
+        const statType = isPitcher(positionText) ? "pitching" : "hitting";
         openLink(
           mlbId
-            ? `https://baseballsavant.mlb.com/savant-player/${urlName}-${mlbId}`
-            : `https://baseballsavant.mlb.com/savant-player/${urlName}`
+            ? `https://baseballsavant.mlb.com/savant-player/${urlName}-${mlbId}?stats=statcast-r-${statType}-mlb`
+            : `https://baseballsavant.mlb.com/savant-player/${urlName}?stats=statcast-r-${statType}-mlb`
         );
         break;
+      }
       case "video":
-        showVideoModal(playerName);
+        showVideoModal(playerName, { mlbId, positionText });
         break;
     }
   }
@@ -371,7 +485,7 @@
     for (const nameLink of nameLinks) {
       nameLink.setAttribute(PROCESSED_ATTR, "true");
 
-      const playerName = nameLink.textContent.trim();
+      const playerName = cleanPlayerName(nameLink.textContent.trim());
       if (!playerName || playerName.split(/\s+/).length < 2) continue;
 
       const scorerEl = nameLink.closest("scorer") || nameLink.closest(".scorer");
@@ -410,7 +524,7 @@
       const nameLink = titleDiv.querySelector("h1 a");
       if (!nameLink) continue;
 
-      const playerName = nameLink.textContent.trim();
+      const playerName = cleanPlayerName(nameLink.textContent.trim());
       if (!playerName) continue;
 
       let positionText = null;

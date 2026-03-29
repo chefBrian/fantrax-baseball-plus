@@ -5,7 +5,10 @@
   "description": "Adds Baseball Reference, Statcast, and MLB Video links to Fantrax player pages",
   "permissions": [
     "https://fastball-gateway.mlb.com/*",
-    "https://statsapi.mlb.com/*"
+    "https://statsapi.mlb.com/*",
+    "https://fastball-clips.mlb.com/*",
+    "webRequest",
+    "webRequestBlocking"
   ],
   "background": {
     "scripts": ["background.js"]
