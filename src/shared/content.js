@@ -152,6 +152,321 @@
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  // --- Statcast Percentile Panel ---
+
+  const statcastCache = new Map();
+  let statcastPanelRequestId = 0;
+
+  const BATTING_PERCENTILE_STATS = [
+    { key: "xwoba", label: "xwOBA" },
+    { key: "xba", label: "xBA" },
+    { key: "xslg", label: "xSLG" },
+    { key: "exit_velocity", label: "Avg Exit Velo" },
+    { key: "brl_percent", label: "Barrel %" },
+    { key: "hard_hit_percent", label: "Hard-Hit %" },
+    { key: "bat_speed", label: "Bat Speed" },
+    { key: "squared_up_rate", label: "Squared-Up %" },
+    { key: "chase_percent", label: "Chase %" },
+    { key: "whiff_percent", label: "Whiff %" },
+    { key: "k_percent", label: "K %" },
+    { key: "bb_percent", label: "BB %" },
+  ];
+
+  const SPEED_PERCENTILE_STATS = [
+    { key: "sprint_speed", label: "Sprint Speed" },
+  ];
+
+  const PITCHING_PERCENTILE_STATS = [
+    { key: "xera", label: "xERA" },
+    { key: "xba", label: "xBA" },
+    { key: "fb_velocity", label: "Fastball Velo" },
+    { key: "exit_velocity", label: "Avg Exit Velo" },
+    { key: "chase_percent", label: "Chase %" },
+    { key: "whiff_percent", label: "Whiff %" },
+    { key: "k_percent", label: "K %" },
+    { key: "bb_percent", label: "BB %" },
+    { key: "brl_percent", label: "Barrel %" },
+    { key: "hard_hit_percent", label: "Hard-Hit %" },
+  ];
+
+  function getPercentileColor(pct) {
+    const colors = [
+      "#2166ac", "#3278b5", "#4488c4", "#5e99c9", "#a8a8a8",
+      "#d47c64", "#d06150", "#c6463a", "#b52026", "#a01c20",
+    ];
+    return colors[Math.min(9, Math.floor(pct / 10))];
+  }
+
+  function parseCSVLine(line) {
+    const fields = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { current += '"'; i++; }
+          else inQuotes = false;
+        } else {
+          current += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        fields.push(current.trim());
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    fields.push(current.trim());
+    return fields;
+  }
+
+  function parsePercentileCSV(csvText) {
+    const lines = csvText.trim().split("\n");
+    if (lines.length < 2) return null;
+
+    const headers = parseCSVLine(lines[0]);
+    const yearData = {};
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCSVLine(lines[i]);
+      const row = {};
+      headers.forEach((h, idx) => { row[h] = values[idx] || ""; });
+      yearData[row.year] = row;
+    }
+
+    return yearData;
+  }
+
+  async function fetchStatcastPercentiles(mlbId, type) {
+    const cacheKey = `${mlbId}-${type}`;
+    if (statcastCache.has(cacheKey)) return statcastCache.get(cacheKey);
+
+    try {
+      const result = await browser.runtime.sendMessage({
+        type: "ocf-fetch-statcast",
+        playerId: mlbId,
+        playerType: type,
+      });
+
+      if (!result.ok) return null;
+      const parsed = parsePercentileCSV(result.data);
+      if (parsed) statcastCache.set(cacheKey, parsed);
+      return parsed;
+    } catch (e) {
+      console.warn("[OCF] Statcast fetch failed:", e);
+      return null;
+    }
+  }
+
+  function removeStatcastPanel() {
+    const existing = document.querySelector(".ocf-statcast-panel");
+    if (existing) {
+      if (existing._checkInterval) clearInterval(existing._checkInterval);
+      if (existing._resizeHandler) window.removeEventListener("resize", existing._resizeHandler);
+      existing.remove();
+    }
+  }
+
+  function buildStatRowsHTML(stats) {
+    return stats.map(({ key, label }) => `
+      <div class="ocf-statcast-row" data-stat="${key}">
+        <span class="ocf-statcast-label">${label}</span>
+        <div class="ocf-statcast-track">
+          <div class="ocf-statcast-fill"></div>
+          <span class="ocf-statcast-pct"></span>
+        </div>
+      </div>`).join("");
+  }
+
+  function populateStatcastPanel(panel, yearData, playerName, mlbId, pitcher) {
+    const years = Object.keys(yearData).sort((a, b) => b - a);
+    if (years.length === 0) return;
+
+    let currentYear = years[0];
+    const urlName = makeUrlName(playerName);
+    const savantTab = pitcher ? "statcast-r-pitching-mlb" : "statcast-r-hitting-mlb";
+
+    const bodyHTML = pitcher
+      ? `<div class="ocf-statcast-section-title">Pitching</div>
+         ${buildStatRowsHTML(PITCHING_PERCENTILE_STATS)}`
+      : `<div class="ocf-statcast-section-title">Batting</div>
+         ${buildStatRowsHTML(BATTING_PERCENTILE_STATS)}
+         <div class="ocf-statcast-section-title">Running</div>
+         ${buildStatRowsHTML(SPEED_PERCENTILE_STATS)}`;
+
+    panel.innerHTML = `
+      <div class="ocf-statcast-header">
+        <div class="ocf-statcast-header-top">
+          <select class="ocf-statcast-year"></select>
+          <span class="ocf-statcast-title">MLB Percentile Rankings</span>
+          <a class="ocf-statcast-savant-link" href="https://baseballsavant.mlb.com/savant-player/${urlName}-${mlbId}?stats=${savantTab}" target="_blank" rel="noopener noreferrer">
+            <mat-icon class="mat-icon material-icons" style="font-size:14px;width:14px;height:14px;">open_in_new</mat-icon>
+            savant
+          </a>
+        </div>
+        <div class="ocf-statcast-axis">
+          <span class="ocf-statcast-label"></span>
+          <div class="ocf-statcast-axis-labels">
+            <span class="ocf-statcast-axis--poor">POOR</span>
+            <span class="ocf-statcast-axis--avg">AVERAGE</span>
+            <span class="ocf-statcast-axis--great">GREAT</span>
+          </div>
+        </div>
+      </div>
+      <div class="ocf-statcast-body">
+        ${bodyHTML}
+      </div>
+    `;
+
+    const select = panel.querySelector(".ocf-statcast-year");
+    for (const year of years) {
+      const option = document.createElement("option");
+      option.value = year;
+      option.textContent = year;
+      select.appendChild(option);
+    }
+    select.value = currentYear;
+
+    function updateBars() {
+      const data = yearData[currentYear];
+      panel.querySelectorAll(".ocf-statcast-row[data-stat]").forEach((row) => {
+        const key = row.dataset.stat;
+        const pct = parseInt(data ? data[key] : "", 10);
+        const fill = row.querySelector(".ocf-statcast-fill");
+        const label = row.querySelector(".ocf-statcast-pct");
+
+        if (isNaN(pct)) {
+          fill.style.width = "0%";
+          fill.style.background = "transparent";
+          label.textContent = "";
+          label.style.display = "none";
+          const lbl = row.querySelector(".ocf-statcast-label");
+          lbl.classList.add("ocf-statcast-label--nq");
+          lbl.classList.remove("ocf-statcast-label--qualified");
+        } else {
+          const color = getPercentileColor(pct);
+          fill.style.width = Math.max(pct, 6) + "%";
+          fill.style.background = color;
+          label.textContent = pct;
+          label.style.left = Math.max(pct, 4) + "%";
+          label.style.background = color;
+          label.style.display = "";
+          const lbl = row.querySelector(".ocf-statcast-label");
+          lbl.classList.remove("ocf-statcast-label--nq");
+          lbl.classList.add("ocf-statcast-label--qualified");
+        }
+      });
+    }
+
+    updateBars();
+
+    select.addEventListener("change", () => {
+      currentYear = select.value;
+      updateBars();
+    });
+  }
+
+  async function showStatcastPanel(playerName, positionText, header) {
+    const requestId = ++statcastPanelRequestId;
+    removeStatcastPanel();
+
+    const pitcher = isPitcher(positionText);
+    const skeletonStats = pitcher ? PITCHING_PERCENTILE_STATS : [...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS];
+    const sectionTitle = pitcher ? "Pitching" : "Batting";
+
+    // Create panel and show loading state immediately
+    const panel = document.createElement("div");
+    panel.className = "ocf-statcast-panel";
+    const skeletonRows = skeletonStats
+      .map(({ label }, i) => `
+        <div class="ocf-statcast-row">
+          <span class="ocf-statcast-label" style="opacity:0.3">${label}</span>
+          <div class="ocf-statcast-track"><div class="ocf-statcast-skeleton"></div></div>
+        </div>
+        ${!pitcher && i === BATTING_PERCENTILE_STATS.length - 1 ? '<div class="ocf-statcast-section-title">Running</div>' : ""}
+      `).join("");
+    panel.innerHTML = `
+      <div class="ocf-statcast-header">
+        <div class="ocf-statcast-header-top">
+          <span class="ocf-statcast-title">MLB Percentile Rankings</span>
+          <div class="ocf-statcast-spinner" style="width:16px;height:16px;border-width:2px;margin-left:auto;"></div>
+        </div>
+        <div class="ocf-statcast-axis">
+          <span class="ocf-statcast-label"></span>
+          <div class="ocf-statcast-axis-labels">
+            <span class="ocf-statcast-axis--poor">POOR</span>
+            <span class="ocf-statcast-axis--avg">AVERAGE</span>
+            <span class="ocf-statcast-axis--great">GREAT</span>
+          </div>
+        </div>
+      </div>
+      <div class="ocf-statcast-body">
+        <div class="ocf-statcast-section-title">${sectionTitle}</div>
+        ${skeletonRows}
+      </div>
+    `;
+    document.body.appendChild(panel);
+
+    // Position and attach to modal
+    const container = header.closest(".cdk-overlay-pane")
+      || header.closest("mat-dialog-container")
+      || header.closest("[class*='modal']")
+      || header.closest("[class*='popup']")
+      || header.closest("[class*='dialog']");
+
+    function updatePosition() {
+      const ref = container || header;
+      const rect = ref.getBoundingClientRect();
+      const panelWidth = 340;
+      const gap = 8;
+
+      panel.style.left = "";
+      panel.style.right = "";
+
+      if (window.innerWidth - rect.right >= panelWidth + gap + 8) {
+        panel.style.left = (rect.right + gap) + "px";
+      } else if (rect.left >= panelWidth + gap + 8) {
+        panel.style.left = (rect.left - panelWidth - gap) + "px";
+      } else {
+        panel.style.right = "8px";
+      }
+
+      panel.style.top = rect.top + "px";
+      panel.style.maxHeight = (window.innerHeight - rect.top - 16) + "px";
+    }
+
+    updatePosition();
+    panel.classList.add("ocf-statcast-panel--visible");
+
+    const checkInterval = setInterval(() => {
+      if (!document.contains(container || header)) {
+        removeStatcastPanel();
+      }
+    }, 100);
+    panel._checkInterval = checkInterval;
+
+    const resizeHandler = () => {
+      if (document.contains(container || header)) updatePosition();
+    };
+    window.addEventListener("resize", resizeHandler);
+    panel._resizeHandler = resizeHandler;
+
+    // Fetch data (panel already visible with spinner)
+    const mlbId = await lookupMlbId(playerName);
+    if (!mlbId || requestId !== statcastPanelRequestId) return;
+    if (!document.contains(header)) { removeStatcastPanel(); return; }
+
+    const yearData = await fetchStatcastPercentiles(mlbId, pitcher ? "pitcher" : "batter");
+    if (!yearData || requestId !== statcastPanelRequestId) return;
+    if (!document.contains(header)) { removeStatcastPanel(); return; }
+
+    // Populate the same panel in-place (no swap)
+    populateStatcastPanel(panel, yearData, playerName, mlbId, pitcher);
+  }
+
   // --- MLB Video API (GraphQL) ---
 
   function isPitcher(positionText) {
@@ -718,6 +1033,8 @@
       nameLink.after(links);
 
       maybeAddLiveIcon(links, teamName);
+
+      showStatcastPanel(playerName, positionText, header);
     }
   }
 
@@ -730,12 +1047,36 @@
 
   scanAndInject();
 
+  function watchOverlayForModal(overlay) {
+    function hasPlayerName() {
+      const link = overlay.querySelector(".player-profile__header h1 a");
+      return link && link.textContent.trim();
+    }
+    const inner = new MutationObserver(() => {
+      if (hasPlayerName()) {
+        inner.disconnect();
+        processModals();
+      }
+    });
+    inner.observe(overlay, { childList: true, subtree: true, characterData: true });
+    if (hasPlayerName()) {
+      inner.disconnect();
+      processModals();
+    }
+  }
+
   const observer = new MutationObserver((mutations) => {
     let hasNewNodes = false;
     for (const mutation of mutations) {
       if (mutation.addedNodes.length > 0) {
         hasNewNodes = true;
-        break;
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          const overlay = node.classList?.contains("cdk-overlay-pane")
+            ? node
+            : node.querySelector?.(".cdk-overlay-pane");
+          if (overlay) watchOverlayForModal(overlay);
+        }
       }
     }
     if (hasNewNodes) {

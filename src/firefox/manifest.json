@@ -9,7 +9,8 @@
   "host_permissions": [
     "https://fastball-gateway.mlb.com/*",
     "https://statsapi.mlb.com/*",
-    "https://fastball-clips.mlb.com/*"
+    "https://fastball-clips.mlb.com/*",
+    "https://baseballsavant.mlb.com/*"
   ],
   "background": {
     "scripts": ["background.js"]
