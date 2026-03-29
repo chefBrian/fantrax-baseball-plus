@@ -2,6 +2,28 @@
 
 Browser extension that enhances Fantrax fantasy baseball with quick-access links and live game integration. Available for Chrome and Firefox.
 
+## Screenshots
+
+### Player Modal
+Statcast percentile rankings and quick-access links on the player card.
+
+![Player Modal](screenshots/PlayerCard.png)
+
+### Inline Video
+MLB Film Room highlights with filter tabs and auto-advancing playlist.
+
+![Video Modal](screenshots/VideoModal.png)
+
+### Live Game Scores
+Live score, inning, and MLB.tv link right on the roster row.
+
+![Live Matchup](screenshots/LiveMatchup.png)
+
+### Player Tables
+Icons on every row in roster, matchup, and transaction tables.
+
+![Player Search](screenshots/PlayerSearch.png)
+
 ## Features
 
 - **Statcast** - links to Baseball Savant player page
