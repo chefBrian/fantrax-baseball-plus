@@ -91,7 +91,8 @@
   const PITCHER_FILTERS = {
     "all": {
       label: "All Highlights",
-      query: (id) => 'PitcherId = [' + id + '] Order By Timestamp DESC',
+      queryType: "FREETEXT",
+      query: (_id, playerName) => playerName,
     },
     "strikeouts": {
       label: "Strikeouts",
@@ -134,8 +135,9 @@
     if (!mlbId) return { videos: [], total: 0 };
 
     const filters = getFilters(positionText);
-    const query = filters[filter].query(mlbId);
-    const search = await doVideoFetch(query, page - 1);
+    const activeFilter = filters[filter];
+    const query = activeFilter.query(mlbId, playerName);
+    const search = await doVideoFetch(query, page - 1, activeFilter.queryType);
 
     const videos = (search.plays || []).map((play) => {
       const mp = play.mediaPlayback?.[0];
@@ -479,14 +481,25 @@
 
   function processTablePlayers() {
     const nameLinks = document.querySelectorAll(
-      `.scorer__info__name > a:not([${PROCESSED_ATTR}])`
+      `.scorer__info__name > a`
     );
 
     for (const nameLink of nameLinks) {
-      nameLink.setAttribute(PROCESSED_ATTR, "true");
-
       const playerName = cleanPlayerName(nameLink.textContent.trim());
       if (!playerName || playerName.split(/\s+/).length < 2) continue;
+
+      const prevName = nameLink.getAttribute(PROCESSED_ATTR);
+      if (prevName === playerName) continue;
+
+      // Remove stale links if this element was recycled with a new player
+      if (prevName) {
+        const scorerInfo = nameLink.closest(".scorer__info");
+        if (scorerInfo) {
+          scorerInfo.querySelectorAll(".ocf-links--sm").forEach((el) => el.remove());
+        }
+      }
+
+      nameLink.setAttribute(PROCESSED_ATTR, playerName);
 
       const scorerEl = nameLink.closest("scorer") || nameLink.closest(".scorer");
       const positionText = scorerEl ? getPositionFromScorer(scorerEl) : null;
@@ -512,12 +525,10 @@
 
   function processModals() {
     const headers = document.querySelectorAll(
-      `.player-profile__header:not([${PROCESSED_ATTR}])`
+      `.player-profile__header`
     );
 
     for (const header of headers) {
-      header.setAttribute(PROCESSED_ATTR, "true");
-
       const titleDiv = header.querySelector(".player-profile__header__title");
       if (!titleDiv) continue;
 
@@ -526,6 +537,16 @@
 
       const playerName = cleanPlayerName(nameLink.textContent.trim());
       if (!playerName) continue;
+
+      const prevName = header.getAttribute(PROCESSED_ATTR);
+      if (prevName === playerName) continue;
+
+      // Remove stale links if recycled
+      if (prevName) {
+        titleDiv.querySelectorAll(".ocf-links--lg").forEach((el) => el.remove());
+      }
+
+      header.setAttribute(PROCESSED_ATTR, playerName);
 
       let positionText = null;
       const pEl = titleDiv.querySelector("p");
