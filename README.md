@@ -1,16 +1,16 @@
-# Fantrax+
+# FantraxBaseball+
 
-Browser extension that adds quick-access links to Fantrax fantasy baseball player pages. Available for Chrome and Firefox.
+Browser extension that enhances Fantrax fantasy baseball with quick-access links and live game integration. Available for Chrome and Firefox.
 
 ## Features
 
-- **Baseball Reference** - direct link via MLB ID, with search fallback
 - **Statcast** - links to Baseball Savant player page
 - **MLB Video** - inline video modal with filtered highlights
+- **Live MLB.tv** - red pulsing icon links directly to the MLB.tv stream when a player's game is live
 
 Links appear in two places:
 - **Player modals** - larger icons next to the player name
-- **Roster/matchup tables** - small icons on the position line
+- **Roster/matchup/transaction tables** - small icons on the position line
 
 ### Video Modal
 
@@ -45,6 +45,8 @@ Clicking the video icon opens a modal with:
 - Hitter videos use structured queries with `HitResult` and `HitDistance` filters
 - Pitcher highlights use FREETEXT search; strikeout/HR filters use structured queries
 - `declarativeNetRequest` rules inject headers for `fastball-clips.mlb.com` video playback
+- Live game detection uses the MLB Schedule API, matched to player teams parsed from the Fantrax DOM
+- Abbreviated player names in transactions are resolved via the Fantrax `getTransactionDetailsHistory` API
 
 ## Project Structure
 

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Fantrax+",
+  "name": "FantraxBaseball+",
   "version": "1.0.0",
-  "description": "Adds Baseball Reference, Statcast, and MLB Video links to Fantrax player pages",
+  "description": "Adds Statcast, MLB Video, and live MLB.tv links to Fantrax fantasy baseball players",
   "permissions": [
     "declarativeNetRequest"
   ],
@@ -37,7 +37,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "fantrax-plus@example.com",
+      "id": "fantrax-baseball-plus@example.com",
       "strict_min_version": "128.0"
     }
   }
