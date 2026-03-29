@@ -115,21 +115,11 @@
     }
   }
 
-  async function maybeAddLiveIcon(container, teamStr) {
-    if (!teamStr) return;
-    const schedule = await fetchTodaySchedule();
-    if (!schedule) return;
-
-    const game = schedule.get(teamStr);
-    if (!game || !game.isLive) return;
-
-    // Don't duplicate
-    if (container.querySelector(".ocf-link--live")) return;
-
+  function createLiveIcon(container) {
     const a = document.createElement("a");
     a.className = "ocf-link ocf-link--live";
+    a.style.display = "none";
     a.title = "Watch Live on MLB.tv";
-    a.href = `https://www.mlb.com/tv/g${game.gamePk}`;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     const i = document.createElement("mat-icon");
@@ -138,6 +128,19 @@
     a.appendChild(i);
     a.addEventListener("click", (e) => e.stopPropagation());
     container.appendChild(a);
+    return a;
+  }
+
+  async function maybeShowLiveIcon(liveIcon, teamStr) {
+    if (!teamStr) return;
+    const schedule = await fetchTodaySchedule();
+    if (!schedule) return;
+
+    const game = schedule.get(teamStr);
+    if (!game || !game.isLive) return;
+
+    liveIcon.href = `https://www.mlb.com/tv/g${game.gamePk}`;
+    liveIcon.style.display = "";
   }
 
   function makeUrlName(name) {
@@ -891,6 +894,8 @@
   function buildLinks(playerName, positionText, size) {
     const container = document.createElement("span");
     container.className = size === "lg" ? "ocf-links--lg" : "ocf-links--sm";
+    container.dataset.ocfPlayer = playerName;
+    container.dataset.ocfPos = positionText || "";
 
     const links = [
       { type: "statcast", icon: "insights", title: "Statcast" },
@@ -907,12 +912,17 @@
       i.textContent = icon;
       a.appendChild(i);
       a.addEventListener("click", (e) =>
-        handleLinkClick(e, type, playerName, positionText)
+        handleLinkClick(e, type, container.dataset.ocfPlayer, container.dataset.ocfPos)
       );
       container.appendChild(a);
     }
 
     return container;
+  }
+
+  function updateLinks(container, playerName, positionText) {
+    container.dataset.ocfPlayer = playerName;
+    container.dataset.ocfPos = positionText || "";
   }
 
   // --- Table row players (roster, matchup, players pages) ---
@@ -952,37 +962,37 @@
         playerName = fullName;
       }
 
-      const prevName = nameLink.getAttribute(PROCESSED_ATTR);
-      if (prevName === playerName) continue;
-
-      // Remove stale links if this element was recycled with a new player
-      if (prevName) {
-        const scorerInfo = nameLink.closest(".scorer__info");
-        if (scorerInfo) {
-          scorerInfo.querySelectorAll(".ocf-links--sm").forEach((el) => el.remove());
-        }
-      }
-
-      nameLink.setAttribute(PROCESSED_ATTR, playerName);
+      const scorerInfo = nameLink.closest(".scorer__info");
+      if (!scorerInfo) continue;
 
       const scorerEl = nameLink.closest("scorer") || nameLink.closest(".scorer");
       const positionText = scorerEl ? getPositionFromScorer(scorerEl) : null;
       const teamAbbr = scorerEl ? getTeamFromScorer(scorerEl) : null;
 
-      const links = buildLinks(playerName, positionText, "sm");
-      maybeAddLiveIcon(links, teamAbbr);
-
-      // Insert into .scorer__info__positions if it exists, otherwise after name
-      const scorerInfo = nameLink.closest(".scorer__info");
-      if (scorerInfo) {
-        const posDiv = scorerInfo.querySelector(".scorer__info__positions");
-        if (posDiv) {
-          posDiv.appendChild(links);
-        } else {
-          // No position div - add after the name div
-          const nameDiv = scorerInfo.querySelector(".scorer__info__name");
-          if (nameDiv) nameDiv.after(links);
+      // Reuse existing link container if present, otherwise create one
+      const existing = scorerInfo.querySelector(".ocf-links--sm");
+      if (existing) {
+        if (existing.dataset.ocfPlayer === playerName) continue;
+        updateLinks(existing, playerName, positionText);
+        // Update live icon
+        const liveIcon = existing.querySelector(".ocf-link--live");
+        if (liveIcon) {
+          liveIcon.style.display = "none";
+          maybeShowLiveIcon(liveIcon, teamAbbr);
         }
+        continue;
+      }
+
+      const links = buildLinks(playerName, positionText, "sm");
+      const liveIcon = createLiveIcon(links);
+      maybeShowLiveIcon(liveIcon, teamAbbr);
+
+      const posDiv = scorerInfo.querySelector(".scorer__info__positions");
+      if (posDiv) {
+        posDiv.appendChild(links);
+      } else {
+        const nameDiv = scorerInfo.querySelector(".scorer__info__name");
+        if (nameDiv) nameDiv.after(links);
       }
     }
   }
@@ -1032,7 +1042,8 @@
       // Insert right after the player name in h1
       nameLink.after(links);
 
-      maybeAddLiveIcon(links, teamName);
+      const liveIcon = createLiveIcon(links);
+      maybeShowLiveIcon(liveIcon, teamName);
 
       showStatcastPanel(playerName, positionText, header);
     }
@@ -1066,22 +1077,28 @@
   }
 
   const observer = new MutationObserver((mutations) => {
-    let hasNewNodes = false;
+    let hasScorers = false;
+    let hasOtherNodes = false;
     for (const mutation of mutations) {
-      if (mutation.addedNodes.length > 0) {
-        hasNewNodes = true;
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType !== Node.ELEMENT_NODE) continue;
-          const overlay = node.classList?.contains("cdk-overlay-pane")
-            ? node
-            : node.querySelector?.(".cdk-overlay-pane");
-          if (overlay) watchOverlayForModal(overlay);
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        const overlay = node.classList?.contains("cdk-overlay-pane")
+          ? node
+          : node.querySelector?.(".cdk-overlay-pane");
+        if (overlay) watchOverlayForModal(overlay);
+        if (node.matches?.("scorer, .scorer") || node.querySelector?.("scorer, .scorer")) {
+          hasScorers = true;
+        } else if (node.querySelector?.(".player-profile__header")) {
+          hasOtherNodes = true;
         }
       }
     }
-    if (hasNewNodes) {
+    // Process scorers immediately - no debounce
+    if (hasScorers) processTablePlayers();
+    // Debounce other changes (modals handled by watchOverlayForModal)
+    if (hasOtherNodes) {
       clearTimeout(observer._timeout);
-      observer._timeout = setTimeout(scanAndInject, 300);
+      observer._timeout = setTimeout(processModals, 300);
     }
   });
 
@@ -1092,23 +1109,29 @@
     const schedule = await fetchTodaySchedule(true);
     if (!schedule) return;
 
-    document.querySelectorAll(".ocf-links").forEach((links) => {
-      if (links.querySelector(".ocf-link--live")) return;
-      // Find the team associated with this link container
+    document.querySelectorAll(".ocf-link--live").forEach((liveIcon) => {
+      const links = liveIcon.closest(".ocf-links--sm, .ocf-links--lg");
+      if (!links) return;
       const scorer = links.closest("scorer") || links.closest(".scorer");
-      const modal = links.closest(".modal-content, .player-modal");
       let teamStr = null;
       if (scorer) {
         teamStr = getTeamFromScorer(scorer);
-      } else if (modal) {
-        const titleDiv = modal.querySelector(".player-modal__title, .modal__header__title");
-        const pEl = titleDiv?.querySelector("p");
+      } else {
+        const header = links.closest(".player-profile__header");
+        const pEl = header?.querySelector(".player-profile__header__title p");
         const firstChild = pEl?.firstChild;
         if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
           teamStr = firstChild.textContent.trim();
         }
       }
-      if (teamStr) maybeAddLiveIcon(links, teamStr);
+      if (!teamStr) return;
+      const game = schedule.get(teamStr);
+      if (game && game.isLive) {
+        liveIcon.href = `https://www.mlb.com/tv/g${game.gamePk}`;
+        liveIcon.style.display = "";
+      } else {
+        liveIcon.style.display = "none";
+      }
     });
   }, LIVE_POLL_INTERVAL);
 })();
