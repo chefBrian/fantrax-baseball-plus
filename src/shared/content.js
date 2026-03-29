@@ -9,8 +9,7 @@
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
   let scheduleData = null;
-  let scheduleTime = 0;
-  const SCHEDULE_TTL = 120000; // 2 minutes
+  const LIVE_POLL_INTERVAL = 120000; // 2 minutes
 
   // Map abbreviated names ("C. Emerson") -> full names ("Corbin Emerson")
   const abbrNameMap = new Map();
@@ -89,9 +88,8 @@
     return null;
   }
 
-  async function fetchTodaySchedule() {
-    const now = Date.now();
-    if (scheduleData && (now - scheduleTime) < SCHEDULE_TTL) return scheduleData;
+  async function fetchTodaySchedule(forceRefresh = false) {
+    if (scheduleData && !forceRefresh) return scheduleData;
     try {
       const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
       const resp = await fetch(
@@ -111,7 +109,6 @@
         }
       }
       scheduleData = map;
-      scheduleTime = now;
       return map;
     } catch (e) {
       return null;
@@ -748,4 +745,29 @@
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
+
+  // Periodically re-check for games that went live since last scan
+  setInterval(async () => {
+    const schedule = await fetchTodaySchedule(true);
+    if (!schedule) return;
+
+    document.querySelectorAll(".ocf-links").forEach((links) => {
+      if (links.querySelector(".ocf-link--live")) return;
+      // Find the team associated with this link container
+      const scorer = links.closest("scorer") || links.closest(".scorer");
+      const modal = links.closest(".modal-content, .player-modal");
+      let teamStr = null;
+      if (scorer) {
+        teamStr = getTeamFromScorer(scorer);
+      } else if (modal) {
+        const titleDiv = modal.querySelector(".player-modal__title, .modal__header__title");
+        const pEl = titleDiv?.querySelector("p");
+        const firstChild = pEl?.firstChild;
+        if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
+          teamStr = firstChild.textContent.trim();
+        }
+      }
+      if (teamStr) maybeAddLiveIcon(links, teamStr);
+    });
+  }, LIVE_POLL_INTERVAL);
 })();
