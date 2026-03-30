@@ -737,9 +737,7 @@
   }
 
   function escapeHtml(str) {
-    const el = document.createElement("span");
-    el.textContent = str;
-    return el.innerHTML;
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
   function formatDuration(dur) {
