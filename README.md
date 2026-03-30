@@ -15,7 +15,7 @@ MLB Film Room highlights with filter tabs and auto-advancing playlist.
 ![Video Modal](screenshots/VideoModal.png)
 
 ### Live Game Scores
-Live score, inning, and MLB.tv link right on the roster row.
+Live score, inning, and streaming link right on the roster row.
 
 ![Live Matchup](screenshots/LiveMatchup.png)
 
@@ -34,7 +34,7 @@ Toggle individual features on/off from the toolbar popup.
 - **Baseball Reference** - links to the player's BBRef page (direct via MLB ID, search fallback)
 - **Statcast** - links to Baseball Savant player page with percentile rankings panel
 - **MLB Video** - inline video modal with filtered highlights
-- **Live MLB.tv** - red pulsing icon links directly to the MLB.tv stream when a player's game is live
+- **Live Game** - red pulsing icon links directly to the live stream when a player's game is in progress. Exclusive broadcasts (Peacock, Apple TV+, ESPN, Netflix, TBS) link to the correct streaming platform instead of MLB.tv
 
 Links appear in two places:
 - **Player modals** - larger icons next to the player name
@@ -75,7 +75,8 @@ Clicking the video icon opens a modal with:
 - Hitter videos use structured queries with `HitResult` and `HitDistance` filters
 - Pitcher highlights use FREETEXT search; strikeout/HR filters use structured queries
 - `declarativeNetRequest` rules inject headers for `fastball-clips.mlb.com` video playback
-- Live game detection uses the MLB Schedule API, matched to player teams parsed from the Fantrax DOM
+- Live game detection uses the MLB Schedule API (with `broadcasts` hydration), matched to player teams parsed from the Fantrax DOM
+- Exclusive broadcasts (Peacock, Apple TV+, ESPN, Netflix, TBS) are detected via `availabilityCode: "exclusive"` and routed to the streaming platform
 - Abbreviated player names in transactions are resolved via the Fantrax `getTransactionDetailsHistory` API
 
 ## Project Structure
