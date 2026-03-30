@@ -24,6 +24,11 @@ Icons on every row in roster, matchup, and transaction tables.
 
 ![Player Search](screenshots/PlayerSearch.png)
 
+### Settings Panel
+Toggle individual features on/off from the toolbar popup.
+
+![Settings Panel](screenshots/SettingsPanel.png)
+
 ## Features
 
 - **Baseball Reference** - links to the player's BBRef page (direct via MLB ID, search fallback)
