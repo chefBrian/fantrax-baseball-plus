@@ -9,6 +9,7 @@
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
   let scheduleData = null;
+  let schedulePromise = null;
   const LIVE_POLL_INTERVAL = 120000; // 2 minutes
 
   // Map abbreviated names ("C. Emerson") -> full names ("Corbin Emerson")
@@ -90,29 +91,35 @@
 
   async function fetchTodaySchedule(forceRefresh = false) {
     if (scheduleData && !forceRefresh) return scheduleData;
-    try {
-      const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
-      const resp = await fetch(
-        `https://statsapi.mlb.com/api/v1/schedule?date=${today}&sportId=1&hydrate=team`
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const games = data.dates?.[0]?.games || [];
-      const map = new Map();
-      for (const game of games) {
-        const isLive = game.status.detailedState === "In Progress";
-        const info = { gamePk: game.gamePk, isLive };
-        for (const side of ["away", "home"]) {
-          const team = game.teams[side].team;
-          map.set(team.abbreviation, info);
-          map.set(team.name, info);
+    if (schedulePromise && !forceRefresh) return schedulePromise;
+    schedulePromise = (async () => {
+      try {
+        const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
+        const resp = await fetch(
+          `https://statsapi.mlb.com/api/v1/schedule?date=${today}&sportId=1&hydrate=team`
+        );
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const games = data.dates?.[0]?.games || [];
+        const map = new Map();
+        for (const game of games) {
+          const isLive = game.status.detailedState === "In Progress";
+          const info = { gamePk: game.gamePk, isLive };
+          for (const side of ["away", "home"]) {
+            const team = game.teams[side].team;
+            map.set(team.abbreviation, info);
+            map.set(team.name, info);
+          }
         }
+        scheduleData = map;
+        return map;
+      } catch (e) {
+        return null;
+      } finally {
+        schedulePromise = null;
       }
-      scheduleData = map;
-      return map;
-    } catch (e) {
-      return null;
-    }
+    })();
+    return schedulePromise;
   }
 
   function createLiveIcon(container) {
