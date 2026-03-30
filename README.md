@@ -20,7 +20,7 @@ Pulsing live icon links to the stream when a player's game is in progress.
 ![Live Matchup](screenshots/LiveMatchup.png)
 
 ### Player Tables
-Icons on every row in roster, matchup, and transaction tables.
+Icons on every row in roster, matchup, transaction, and player search tables.
 
 ![Player Search](screenshots/PlayerSearch.png)
 
@@ -38,7 +38,7 @@ Toggle individual features on/off from the toolbar popup.
 
 Links appear in two places:
 - **Player modals** - larger icons next to the player name
-- **Roster/matchup/transaction tables** - small icons on the position line
+- **Roster/matchup/transaction/player search tables** - small icons on the position line
 
 All features can be individually toggled on/off from the extension toolbar popup. Settings sync across devices.
 
