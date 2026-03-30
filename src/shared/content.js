@@ -345,6 +345,7 @@
 
     function updateBars() {
       const data = yearData[currentYear];
+      const deferred = [];
       panel.querySelectorAll(".ocf-statcast-row[data-stat]").forEach((row) => {
         const key = row.dataset.stat;
         const pct = parseInt(data ? data[key] : "", 10);
@@ -365,14 +366,12 @@
           label.textContent = pct;
           label.style.background = color;
           if (wasHidden) {
-            // Start at 0, force reflow, then set target so transition fires
+            // Set initial state at 0, defer targets to next frame for transition
             label.style.left = "0%";
             label.style.display = "";
             fill.style.width = "0%";
             fill.style.background = color;
-            void fill.offsetWidth; // force reflow
-            fill.style.width = Math.max(pct, 6) + "%";
-            label.style.left = Math.max(pct, 4) + "%";
+            deferred.push({ fill, label, pct });
           } else {
             fill.style.width = Math.max(pct, 6) + "%";
             fill.style.background = color;
@@ -383,6 +382,14 @@
           lbl.classList.add("ocf-statcast-label--qualified");
         }
       });
+      if (deferred.length) {
+        requestAnimationFrame(() => {
+          for (const { fill, label, pct } of deferred) {
+            fill.style.width = Math.max(pct, 6) + "%";
+            label.style.left = Math.max(pct, 4) + "%";
+          }
+        });
+      }
     }
 
     updateBars();
@@ -1145,6 +1152,10 @@
   }
 
   function observeOverlayContainer(containerEl) {
+    // Process any overlay panes that already exist
+    for (const pane of containerEl.querySelectorAll(".cdk-overlay-pane")) {
+      watchOverlayForModal(pane);
+    }
     const overlayObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
