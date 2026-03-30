@@ -1084,6 +1084,12 @@
     let hasScorers = false;
     let hasOtherNodes = false;
     for (const mutation of mutations) {
+      // Detect in-place content updates inside existing scorer elements
+      // (e.g., Fantrax filter/sort/page changes that reuse DOM rows)
+      if (!hasScorers && mutation.target.nodeType === Node.ELEMENT_NODE &&
+          mutation.target.closest?.("scorer, .scorer")) {
+        hasScorers = true;
+      }
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
         const overlay = node.classList?.contains("cdk-overlay-pane")
