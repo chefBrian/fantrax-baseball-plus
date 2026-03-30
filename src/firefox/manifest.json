@@ -4,8 +4,16 @@
   "version": "1.0.0",
   "description": "Adds Statcast, MLB Video, and live MLB.tv links to Fantrax fantasy baseball players",
   "permissions": [
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "storage"
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png"
+    }
+  },
   "host_permissions": [
     "https://fastball-gateway.mlb.com/*",
     "https://statsapi.mlb.com/*",
