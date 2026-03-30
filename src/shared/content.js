@@ -98,7 +98,7 @@
       try {
         const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
         const resp = await fetch(
-          `https://statsapi.mlb.com/api/v1/schedule?date=${today}&sportId=1&hydrate=team`
+          `https://statsapi.mlb.com/api/v1/schedule?date=${today}&sportId=1&hydrate=team,broadcasts`
         );
         if (!resp.ok) return null;
         const data = await resp.json();
@@ -106,7 +106,10 @@
         const map = new Map();
         for (const game of games) {
           const isLive = game.status.detailedState === "In Progress";
-          const info = { gamePk: game.gamePk, isLive };
+          const exclusive = (game.broadcasts || []).find(
+            (b) => b.type === "TV" && b.availability?.availabilityCode === "exclusive"
+          );
+          const info = { gamePk: game.gamePk, isLive, exclusiveBroadcast: exclusive?.callSign || null };
           for (const side of ["away", "home"]) {
             const team = game.teams[side].team;
             map.set(team.abbreviation, info);
@@ -122,6 +125,22 @@
       }
     })();
     return schedulePromise;
+  }
+
+  const EXCLUSIVE_BROADCAST_URLS = {
+    "Peacock": "https://www.peacocktv.com/sports/mlb",
+    "Apple TV": "https://tv.apple.com/us/room/edt.item.62327df1-6874-470e-98b2-a5bbeac509a2",
+    "ESPN": "https://www.espn.com/watch/",
+    "Netflix": "https://www.netflix.com",
+    "TBS": "https://www.tbs.com/mlb-on-tbs",
+  };
+
+  function getLiveGameInfo(game) {
+    const bc = game.exclusiveBroadcast;
+    if (bc && EXCLUSIVE_BROADCAST_URLS[bc]) {
+      return { url: EXCLUSIVE_BROADCAST_URLS[bc], title: `Watch on ${bc}` };
+    }
+    return { url: `https://www.mlb.com/tv/g${game.gamePk}`, title: "Watch Live on MLB.tv" };
   }
 
   function createLiveIcon(container) {
@@ -148,7 +167,9 @@
     const game = schedule.get(teamStr);
     if (!game || !game.isLive) return;
 
-    liveIcon.href = `https://www.mlb.com/tv/g${game.gamePk}`;
+    const { url, title } = getLiveGameInfo(game);
+    liveIcon.href = url;
+    liveIcon.title = title;
     liveIcon.style.display = "";
   }
 
@@ -1274,7 +1295,9 @@
       if (!teamStr) return;
       const game = schedule.get(teamStr);
       if (game && game.isLive) {
-        liveIcon.href = `https://www.mlb.com/tv/g${game.gamePk}`;
+        const { url, title } = getLiveGameInfo(game);
+        liveIcon.href = url;
+        liveIcon.title = title;
         liveIcon.style.display = "";
       } else {
         liveIcon.style.display = "none";
