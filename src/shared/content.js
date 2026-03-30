@@ -1118,8 +1118,10 @@
   // --- Overlay observer: watch CDK overlay container directly for instant modal detection ---
 
   function isPlayerModal(overlay) {
-    // Player modals use mat-dialog-container; skip tooltips, dropdowns, etc.
-    return overlay.querySelector("mat-dialog-container") !== null;
+    // Player modals use mat-dialog-container with a player profile header;
+    // skip tooltips, dropdowns, and other dialogs (e.g. League Layout).
+    return overlay.querySelector("mat-dialog-container") !== null &&
+      overlay.querySelector(".player-profile__header") !== null;
   }
 
   function watchOverlayForModal(overlay) {
