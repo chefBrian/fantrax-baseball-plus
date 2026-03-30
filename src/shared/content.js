@@ -984,10 +984,10 @@
     return teamSpan.textContent.replace(/^[\s-]+/, "").trim();
   }
 
-  function processTablePlayers() {
-    const nameLinks = document.querySelectorAll(
-      `.scorer__info__name > a`
-    );
+  function processTablePlayers(roots) {
+    const nameLinks = roots
+      ? roots.flatMap((r) => [...r.querySelectorAll(".scorer__info__name > a")])
+      : [...document.querySelectorAll(".scorer__info__name > a")];
 
     for (const nameLink of nameLinks) {
       let playerName = cleanPlayerName(nameLink.textContent.trim());
@@ -1166,13 +1166,13 @@
   // --- Body observer: scorers + fallback overlay container detection ---
 
   const observer = new MutationObserver((mutations) => {
-    let hasScorers = false;
+    const scorerRoots = [];
     for (const mutation of mutations) {
       // Detect in-place content updates inside existing scorer elements
       // (e.g., Fantrax filter/sort/page changes that reuse DOM rows)
-      if (!hasScorers && mutation.target.nodeType === Node.ELEMENT_NODE &&
-          mutation.target.closest?.("scorer, .scorer")) {
-        hasScorers = true;
+      if (mutation.target.nodeType === Node.ELEMENT_NODE) {
+        const scorer = mutation.target.closest?.("scorer, .scorer");
+        if (scorer) scorerRoots.push(scorer);
       }
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -1183,12 +1183,15 @@
           const c = node.querySelector(".cdk-overlay-container");
           if (c) observeOverlayContainer(c);
         }
-        if (node.matches?.("scorer, .scorer") || node.querySelector?.("scorer, .scorer")) {
-          hasScorers = true;
+        if (node.matches?.("scorer, .scorer")) {
+          scorerRoots.push(node);
+        } else {
+          const nested = node.querySelectorAll?.("scorer, .scorer");
+          if (nested?.length) scorerRoots.push(...nested);
         }
       }
     }
-    if (hasScorers) processTablePlayers();
+    if (scorerRoots.length) processTablePlayers(scorerRoots);
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
