@@ -717,13 +717,14 @@
   }
 
   function appendVideoItems(container, videos, modal) {
+    const frag = document.createDocumentFragment();
     for (const video of videos) {
       const item = document.createElement("div");
       item.className = "ocf-video-modal__list-item";
       item.dataset.videoId = video.id;
       item.innerHTML = `
         <div class="ocf-video-modal__list-thumb">
-          ${video.thumbUrl ? `<img src="${escapeHtml(video.thumbUrl)}" alt="" />` : ""}
+          ${video.thumbUrl ? `<img src="${escapeHtml(video.thumbUrl)}" loading="lazy" alt="" />` : ""}
           <span class="ocf-video-modal__list-duration">${formatDuration(video.duration)}</span>
         </div>
         <div class="ocf-video-modal__list-info">
@@ -732,8 +733,9 @@
         </div>
       `;
       item.addEventListener("click", () => selectVideo(modal, video));
-      container.appendChild(item);
+      frag.appendChild(item);
     }
+    container.appendChild(frag);
   }
 
   function escapeHtml(str) {
