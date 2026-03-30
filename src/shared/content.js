@@ -267,7 +267,7 @@
   function removeStatcastPanel() {
     const existing = document.querySelector(".ocf-statcast-panel");
     if (existing) {
-      if (existing._checkInterval) clearInterval(existing._checkInterval);
+      if (existing._dismissObserver) existing._dismissObserver.disconnect();
       if (existing._resizeHandler) {
         window.removeEventListener("resize", existing._resizeHandler);
         window.removeEventListener("scroll", existing._resizeHandler, true);
@@ -353,13 +353,24 @@
           lbl.classList.add("ocf-statcast-label--nq");
           lbl.classList.remove("ocf-statcast-label--qualified");
         } else {
+          const wasHidden = label.style.display === "none";
           const color = getPercentileColor(pct);
-          fill.style.width = Math.max(pct, 6) + "%";
-          fill.style.background = color;
           label.textContent = pct;
-          label.style.left = Math.max(pct, 4) + "%";
           label.style.background = color;
-          label.style.display = "";
+          if (wasHidden) {
+            // Start at 0, force reflow, then set target so transition fires
+            label.style.left = "0%";
+            label.style.display = "";
+            fill.style.width = "0%";
+            fill.style.background = color;
+            void fill.offsetWidth; // force reflow
+            fill.style.width = Math.max(pct, 6) + "%";
+            label.style.left = Math.max(pct, 4) + "%";
+          } else {
+            fill.style.width = Math.max(pct, 6) + "%";
+            fill.style.background = color;
+            label.style.left = Math.max(pct, 4) + "%";
+          }
           const lbl = row.querySelector(".ocf-statcast-label");
           lbl.classList.remove("ocf-statcast-label--nq");
           lbl.classList.add("ocf-statcast-label--qualified");
@@ -375,15 +386,13 @@
     });
   }
 
-  async function showStatcastPanel(playerName, positionText, header) {
-    const requestId = ++statcastPanelRequestId;
+  function showStatcastSkeleton(overlayPane) {
+    ++statcastPanelRequestId;
     removeStatcastPanel();
 
-    const pitcher = isPitcher(positionText);
-    const skeletonStats = pitcher ? PITCHING_PERCENTILE_STATS : [...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS];
-    const sectionTitle = pitcher ? "Pitching" : "Batting";
+    // Default to batter skeleton (more stats = better placeholder)
+    const skeletonStats = [...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS];
 
-    // Create panel and show loading state immediately
     const panel = document.createElement("div");
     panel.className = "ocf-statcast-panel";
     const skeletonRows = skeletonStats
@@ -392,7 +401,7 @@
           <span class="ocf-statcast-label" style="opacity:0.3">${label}</span>
           <div class="ocf-statcast-track"><div class="ocf-statcast-skeleton"></div></div>
         </div>
-        ${!pitcher && i === BATTING_PERCENTILE_STATS.length - 1 ? '<div class="ocf-statcast-section-title">Running</div>' : ""}
+        ${i === BATTING_PERCENTILE_STATS.length - 1 ? '<div class="ocf-statcast-section-title">Running</div>' : ""}
       `).join("");
     panel.innerHTML = `
       <div class="ocf-statcast-header">
@@ -410,22 +419,14 @@
         </div>
       </div>
       <div class="ocf-statcast-body">
-        <div class="ocf-statcast-section-title">${sectionTitle}</div>
+        <div class="ocf-statcast-section-title">Batting</div>
         ${skeletonRows}
       </div>
     `;
     document.body.appendChild(panel);
 
-    // Position and attach to modal
-    const container = header.closest(".cdk-overlay-pane")
-      || header.closest("mat-dialog-container")
-      || header.closest("[class*='modal']")
-      || header.closest("[class*='popup']")
-      || header.closest("[class*='dialog']");
-
     function updatePosition() {
-      const ref = container || header;
-      const rect = ref.getBoundingClientRect();
+      const rect = overlayPane.getBoundingClientRect();
       const panelWidth = 340;
       const gap = 8;
 
@@ -447,30 +448,58 @@
     updatePosition();
     panel.classList.add("ocf-statcast-panel--visible");
 
-    const checkInterval = setInterval(() => {
-      if (!document.contains(container || header)) {
-        removeStatcastPanel();
-      }
-    }, 100);
-    panel._checkInterval = checkInterval;
+    // Dismiss when overlay is removed
+    const dismissParent = overlayPane.parentNode;
+    if (dismissParent) {
+      const dismissObserver = new MutationObserver(() => {
+        if (!dismissParent.contains(overlayPane)) {
+          removeStatcastPanel();
+        }
+      });
+      dismissObserver.observe(dismissParent, { childList: true });
+      panel._dismissObserver = dismissObserver;
+    }
 
+    let rafPending = false;
     const resizeHandler = () => {
-      if (document.contains(container || header)) updatePosition();
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        if (document.contains(overlayPane)) updatePosition();
+      });
     };
     window.addEventListener("resize", resizeHandler);
     window.addEventListener("scroll", resizeHandler, true);
     panel._resizeHandler = resizeHandler;
 
-    // Fetch data (panel already visible with spinner)
+    return panel;
+  }
+
+  async function populateStatcastFromModal(panel, playerName, positionText) {
+    const requestId = ++statcastPanelRequestId;
+    const pitcher = isPitcher(positionText);
+
+    // If pitcher, rebuild the skeleton body with pitcher stats
+    if (pitcher) {
+      const body = panel.querySelector(".ocf-statcast-body");
+      if (body) {
+        body.innerHTML = `
+          <div class="ocf-statcast-section-title">Pitching</div>
+          ${buildStatRowsHTML(PITCHING_PERCENTILE_STATS).replace(/<div class="ocf-statcast-fill"><\/div>\s*<span class="ocf-statcast-pct"><\/span>/g,
+            '<div class="ocf-statcast-skeleton"></div>')}
+        `;
+      }
+    }
+
     const mlbId = await lookupMlbId(playerName);
     if (!mlbId || requestId !== statcastPanelRequestId) return;
-    if (!document.contains(header)) { removeStatcastPanel(); return; }
+    if (!document.contains(panel)) return;
 
     const yearData = await fetchStatcastPercentiles(mlbId, pitcher ? "pitcher" : "batter");
     if (!yearData || requestId !== statcastPanelRequestId) return;
-    if (!document.contains(header)) { removeStatcastPanel(); return; }
+    if (!document.contains(panel)) return;
 
-    // Populate the same panel in-place (no swap)
     populateStatcastPanel(panel, yearData, playerName, mlbId, pitcher);
   }
 
@@ -1049,7 +1078,17 @@
       const liveIcon = createLiveIcon(links);
       maybeShowLiveIcon(liveIcon, teamName);
 
-      showStatcastPanel(playerName, positionText, header);
+      // Populate the skeleton panel if it's already showing, otherwise create fresh
+      const existingPanel = document.querySelector(".ocf-statcast-panel");
+      if (existingPanel) {
+        populateStatcastFromModal(existingPanel, playerName, positionText);
+      } else {
+        const overlayPane = header.closest(".cdk-overlay-pane");
+        if (overlayPane) {
+          const panel = showStatcastSkeleton(overlayPane);
+          populateStatcastFromModal(panel, playerName, positionText);
+        }
+      }
     }
   }
 
@@ -1062,12 +1101,30 @@
 
   scanAndInject();
 
+  // --- Overlay observer: watch CDK overlay container directly for instant modal detection ---
+
+  function isPlayerModal(overlay) {
+    // Player modals use mat-dialog-container; skip tooltips, dropdowns, etc.
+    return overlay.querySelector("mat-dialog-container") !== null;
+  }
+
   function watchOverlayForModal(overlay) {
+    function tryShowSkeleton() {
+      if (isPlayerModal(overlay) && !document.querySelector(".ocf-statcast-panel")) {
+        showStatcastSkeleton(overlay);
+      }
+    }
+
     function hasPlayerName() {
       const link = overlay.querySelector(".player-profile__header h1 a");
       return link && link.textContent.trim();
     }
+
+    // Show skeleton as soon as we can confirm it's a player modal
+    tryShowSkeleton();
+
     const inner = new MutationObserver(() => {
+      tryShowSkeleton();
       if (hasPlayerName()) {
         inner.disconnect();
         processModals();
@@ -1080,9 +1137,29 @@
     }
   }
 
+  function observeOverlayContainer(containerEl) {
+    const overlayObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          const pane = node.classList?.contains("cdk-overlay-pane") ? node : node.querySelector?.(".cdk-overlay-pane");
+          if (pane) watchOverlayForModal(pane);
+        }
+      }
+    });
+    overlayObserver.observe(containerEl, { childList: true });
+  }
+
+  // CDK overlay container may already exist or appear later
+  const existingOverlayContainer = document.querySelector(".cdk-overlay-container");
+  if (existingOverlayContainer) {
+    observeOverlayContainer(existingOverlayContainer);
+  }
+
+  // --- Body observer: scorers + fallback overlay container detection ---
+
   const observer = new MutationObserver((mutations) => {
     let hasScorers = false;
-    let hasOtherNodes = false;
     for (const mutation of mutations) {
       // Detect in-place content updates inside existing scorer elements
       // (e.g., Fantrax filter/sort/page changes that reuse DOM rows)
@@ -1092,24 +1169,19 @@
       }
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        const overlay = node.classList?.contains("cdk-overlay-pane")
-          ? node
-          : node.querySelector?.(".cdk-overlay-pane");
-        if (overlay) watchOverlayForModal(overlay);
+        // Detect CDK overlay container appearing (if it wasn't present at startup)
+        if (node.classList?.contains("cdk-overlay-container")) {
+          observeOverlayContainer(node);
+        } else if (node.querySelector?.(".cdk-overlay-container")) {
+          const c = node.querySelector(".cdk-overlay-container");
+          if (c) observeOverlayContainer(c);
+        }
         if (node.matches?.("scorer, .scorer") || node.querySelector?.("scorer, .scorer")) {
           hasScorers = true;
-        } else if (node.querySelector?.(".player-profile__header")) {
-          hasOtherNodes = true;
         }
       }
     }
-    // Process scorers immediately - no debounce
     if (hasScorers) processTablePlayers();
-    // Debounce other changes (modals handled by watchOverlayForModal)
-    if (hasOtherNodes) {
-      clearTimeout(observer._timeout);
-      observer._timeout = setTimeout(processModals, 300);
-    }
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
