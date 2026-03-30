@@ -6,6 +6,8 @@
   const PROCESSED_ATTR = "data-ocf-links";
   const MLB_SEARCH_API = "https://statsapi.mlb.com/api/v1/people/search?names=";
   const VIDEOS_PER_PAGE = 25;
+  // Feature toggles (all on by default, overridden by storage)
+  const features = { statcastIcon: true, statcastPanel: true, video: true, liveGame: true };
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
   let scheduleData = null;
@@ -947,11 +949,12 @@
     container.dataset.ocfPos = positionText || "";
 
     const links = [
-      { type: "statcast", icon: "insights", title: "Statcast" },
-      { type: "video", icon: "play_circle", title: "MLB Video" },
+      { type: "statcast", icon: "insights", title: "Statcast", feature: "statcastIcon" },
+      { type: "video", icon: "play_circle", title: "MLB Video", feature: "video" },
     ];
 
-    for (const { type, icon, title } of links) {
+    for (const { type, icon, title, feature } of links) {
+      if (!features[feature]) continue;
       const a = document.createElement("a");
       a.className = "ocf-link";
       a.title = title;
@@ -1033,8 +1036,10 @@
       }
 
       const links = buildLinks(playerName, positionText, "sm");
-      const liveIcon = createLiveIcon(links);
-      maybeShowLiveIcon(liveIcon, teamAbbr);
+      if (features.liveGame) {
+        const liveIcon = createLiveIcon(links);
+        maybeShowLiveIcon(liveIcon, teamAbbr);
+      }
 
       const posDiv = scorerInfo.querySelector(".scorer__info__positions");
       if (posDiv) {
@@ -1091,18 +1096,22 @@
       // Insert right after the player name in h1
       nameLink.after(links);
 
-      const liveIcon = createLiveIcon(links);
-      maybeShowLiveIcon(liveIcon, teamName);
+      if (features.liveGame) {
+        const liveIcon = createLiveIcon(links);
+        maybeShowLiveIcon(liveIcon, teamName);
+      }
 
       // Populate the skeleton panel if it's already showing, otherwise create fresh
-      const existingPanel = document.querySelector(".ocf-statcast-panel");
-      if (existingPanel) {
-        populateStatcastFromModal(existingPanel, playerName, positionText);
-      } else {
-        const overlayPane = header.closest(".cdk-overlay-pane");
-        if (overlayPane) {
-          const panel = showStatcastSkeleton(overlayPane);
-          populateStatcastFromModal(panel, playerName, positionText);
+      if (features.statcastPanel) {
+        const existingPanel = document.querySelector(".ocf-statcast-panel");
+        if (existingPanel) {
+          populateStatcastFromModal(existingPanel, playerName, positionText);
+        } else {
+          const overlayPane = header.closest(".cdk-overlay-pane");
+          if (overlayPane) {
+            const panel = showStatcastSkeleton(overlayPane);
+            populateStatcastFromModal(panel, playerName, positionText);
+          }
         }
       }
     }
@@ -1115,7 +1124,30 @@
     processModals();
   }
 
-  scanAndInject();
+  // Load feature settings then inject
+  browser.storage.sync.get({ statcastIcon: true, statcastPanel: true, video: true, liveGame: true }).then((stored) => {
+    Object.assign(features, stored);
+    scanAndInject();
+  });
+
+  // Re-inject when settings change (user toggles in popup)
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== "sync") return;
+    let changed = false;
+    for (const [key, { newValue }] of Object.entries(changes)) {
+      if (key in features) {
+        features[key] = newValue;
+        changed = true;
+      }
+    }
+    if (changed) {
+      // Remove all injected elements and re-scan
+      document.querySelectorAll(".ocf-links--sm, .ocf-links--lg").forEach((el) => el.remove());
+      document.querySelectorAll(`[${PROCESSED_ATTR}]`).forEach((el) => el.removeAttribute(PROCESSED_ATTR));
+      removeStatcastPanel();
+      scanAndInject();
+    }
+  });
 
   // --- Overlay observer: watch CDK overlay container directly for instant modal detection ---
 
@@ -1128,7 +1160,7 @@
 
   function watchOverlayForModal(overlay) {
     function tryShowSkeleton() {
-      if (isPlayerModal(overlay) && !document.querySelector(".ocf-statcast-panel")) {
+      if (features.statcastPanel && isPlayerModal(overlay) && !document.querySelector(".ocf-statcast-panel")) {
         showStatcastSkeleton(overlay);
       }
     }

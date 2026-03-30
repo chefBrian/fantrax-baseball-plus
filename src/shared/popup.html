@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 260px;
+      background: #1a1d21;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .header img { width: 24px; height: 24px; }
+    .header span { font-weight: 600; font-size: 14px; }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+    .toggle-label {
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .toggle-desc {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.4);
+      margin-top: 1px;
+    }
+    /* Toggle switch */
+    .switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .slider::before {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    input:checked + .slider {
+      background: rgb(20, 184, 166);
+    }
+    input:checked + .slider::before {
+      transform: translateX(16px);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon-48.png" alt="">
+    <span>FantraxBaseball+</span>
+  </div>
+
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">Statcast Icon</div>
+      <div class="toggle-desc">Clickable icon to open percentile panel</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="statcastIcon" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">Statcast Panel</div>
+      <div class="toggle-desc">Auto-show panel on player modal</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="statcastPanel" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">Video</div>
+      <div class="toggle-desc">MLB Film Room clips</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="video" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">Live Game</div>
+      <div class="toggle-desc">MLB.tv link when team is playing</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="liveGame" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
