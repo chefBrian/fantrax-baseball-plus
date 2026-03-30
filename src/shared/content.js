@@ -7,7 +7,7 @@
   const MLB_SEARCH_API = "https://statsapi.mlb.com/api/v1/people/search?names=";
   const VIDEOS_PER_PAGE = 25;
   // Feature toggles (all on by default, overridden by storage)
-  const features = { statcastIcon: true, statcastPanel: true, video: true, liveGame: true };
+  const features = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true };
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
   let scheduleData = null;
@@ -927,6 +927,13 @@
     btn.classList.remove("ocf-link--loading");
 
     switch (type) {
+      case "bbref":
+        openLink(
+          mlbId
+            ? `https://www.baseball-reference.com/redirect.fcgi?player=1&mlb_ID=${mlbId}`
+            : `https://www.baseball-reference.com/search/search.fcgi?search=${encodeURIComponent(playerName)}`
+        );
+        break;
       case "statcast": {
         const statType = isPitcher(positionText) ? "pitching" : "hitting";
         openLink(
@@ -949,6 +956,7 @@
     container.dataset.ocfPos = positionText || "";
 
     const links = [
+      { type: "bbref", icon: "sports_baseball", title: "Baseball Reference", feature: "bbref" },
       { type: "statcast", icon: "insights", title: "Statcast", feature: "statcastIcon" },
       { type: "video", icon: "play_circle", title: "MLB Video", feature: "video" },
     ];
@@ -1125,7 +1133,7 @@
   }
 
   // Load feature settings then inject
-  browser.storage.sync.get({ statcastIcon: true, statcastPanel: true, video: true, liveGame: true }).then((stored) => {
+  browser.storage.sync.get({ bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true }).then((stored) => {
     Object.assign(features, stored);
     scanAndInject();
   });

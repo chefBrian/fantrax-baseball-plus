@@ -1,7 +1,7 @@
 const browser = globalThis.browser || globalThis.chrome;
 
-const FEATURES = ["statcastIcon", "statcastPanel", "video", "liveGame"];
-const DEFAULTS = { statcastIcon: true, statcastPanel: true, video: true, liveGame: true };
+const FEATURES = ["bbref", "statcastIcon", "statcastPanel", "video", "liveGame"];
+const DEFAULTS = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true };
 
 async function init() {
   const stored = await browser.storage.sync.get(DEFAULTS);
