@@ -26,13 +26,16 @@ Icons on every row in roster, matchup, and transaction tables.
 
 ## Features
 
-- **Statcast** - links to Baseball Savant player page
+- **Baseball Reference** - links to the player's BBRef page (direct via MLB ID, search fallback)
+- **Statcast** - links to Baseball Savant player page with percentile rankings panel
 - **MLB Video** - inline video modal with filtered highlights
 - **Live MLB.tv** - red pulsing icon links directly to the MLB.tv stream when a player's game is live
 
 Links appear in two places:
 - **Player modals** - larger icons next to the player name
 - **Roster/matchup/transaction tables** - small icons on the position line
+
+All features can be individually toggled on/off from the extension toolbar popup. Settings sync across devices.
 
 ### Video Modal
 
@@ -78,6 +81,8 @@ src/
   shared/
     content.js           # Content script injected into Fantrax pages
     content.css          # Styles for injected links and video modal
+    popup.html           # Toolbar popup with feature toggle switches
+    popup.js             # Reads/writes settings to browser.storage.sync
     icons/               # Extension icons (16, 48, 96, 128px)
   chrome/
     manifest.json        # Chrome MV3 manifest (service worker)
