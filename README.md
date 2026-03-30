@@ -14,8 +14,8 @@ MLB Film Room highlights with filter tabs and auto-advancing playlist.
 
 ![Video Modal](screenshots/VideoModal.png)
 
-### Live Game Scores
-Live score, inning, and streaming link right on the roster row.
+### Live Game Link
+Pulsing live icon links to the stream when a player's game is in progress.
 
 ![Live Matchup](screenshots/LiveMatchup.png)
 
