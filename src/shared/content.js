@@ -201,10 +201,12 @@
 
   function getPercentileColor(pct) {
     const colors = [
-      "#2166ac", "#3278b5", "#4488c4", "#5e99c9", "#a8a8a8",
-      "#d47c64", "#d06150", "#c6463a", "#b52026", "#a01c20",
+      "#2166ac", "#2a6fb1", "#3278b5", "#3b81ba", "#4488c4",
+      "#5392c7", "#5e99c9", "#7dacc2", "#93b8bc", "#a8a8a8",
+      "#c49484", "#d47c64", "#d06c5a", "#d06150", "#cc5445",
+      "#c6463a", "#be3630", "#b52026", "#ab1c22", "#a01c20",
     ];
-    return colors[Math.min(9, Math.floor(pct / 10))];
+    return colors[Math.min(19, Math.floor(pct / 5))];
   }
 
   function parseCSVLine(line) {
