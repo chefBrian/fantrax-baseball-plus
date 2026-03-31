@@ -7,7 +7,7 @@
   const MLB_SEARCH_API = "https://statsapi.mlb.com/api/v1/people/search?names=";
   const VIDEOS_PER_PAGE = 25;
   // Feature toggles (all on by default, overridden by storage)
-  const features = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true };
+  const features = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true };
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
   let scheduleData = null;
@@ -406,7 +406,7 @@
     const savantTab = pitcher ? "statcast-r-pitching-mlb" : "statcast-r-hitting-mlb";
 
     const bodyHTML = pitcher
-      ? `<div class="ocf-statcast-section-title">Pitching</div>
+      ? `<div class="ocf-statcast-section-title">Statcast</div>
          ${buildStatRowsHTML(PITCHING_PERCENTILE_STATS)}`
       : buildStatRowsHTML([...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS]);
 
@@ -554,7 +554,8 @@
       }
 
       panel.style.top = rect.top + "px";
-      panel.style.maxHeight = (window.innerHeight - rect.top - 16) + "px";
+      panel.style.height = rect.height + "px";
+      panel.style.maxHeight = rect.height + "px";
     }
 
     updatePosition();
@@ -597,15 +598,24 @@
     const requestId = ++statcastPanelRequestId;
     const pitcher = isPitcher(positionText);
 
-    // If pitcher, rebuild the skeleton body with pitcher stats
+    // If pitcher, rebuild the skeleton body with pitcher stats + FanGraphs shimmer
     if (pitcher) {
       const body = panel.querySelector(".ocf-statcast-body");
       if (body) {
         body.innerHTML = `
-          <div class="ocf-statcast-section-title">Pitching</div>
+          <div class="ocf-statcast-section-title">Statcast</div>
           ${buildStatRowsHTML(PITCHING_PERCENTILE_STATS).replace(/<div class="ocf-statcast-fill"><\/div>\s*<span class="ocf-statcast-pct"><\/span>/g,
             '<div class="ocf-statcast-skeleton"></div>')}
         `;
+      }
+      if (features.fangraphsPanel) {
+        const fgDivider = document.createElement("div");
+        fgDivider.className = "ocf-fangraphs-divider";
+        panel.appendChild(fgDivider);
+        const fgShimmer = document.createElement("div");
+        fgShimmer.className = "ocf-fangraphs-section";
+        fgShimmer.innerHTML = `<div class="ocf-fangraphs-header"><span class="ocf-fangraphs-title">FanGraphs</span></div>${FANGRAPHS_METRICS.map((m) => `<div class="ocf-fangraphs-row"><span class="ocf-fangraphs-label" style="opacity:0.3">${m.label}</span><div class="ocf-fangraphs-track"><div class="ocf-fangraphs-shimmer"></div></div><span class="ocf-fangraphs-rank"></span></div>`).join("")}`;
+        panel.appendChild(fgShimmer);
       }
     } else {
       // Show rolling chart shimmer placeholder for hitters while loading
@@ -633,19 +643,27 @@
     populateStatcastPanel(panel, yearData, playerName, mlbId, pitcher);
 
     // Append rolling xwOBA chart for hitters only
-    if (!pitcher && rollingData) {
-      appendRollingChart(panel, rollingData, pitcher);
-    } else if (!pitcher) {
-      // Show error for fetch failure
-      panel.querySelector(".ocf-rolling-divider")?.remove();
-      panel.querySelector(".ocf-rolling-section")?.remove();
-      const divider = document.createElement("div");
-      divider.className = "ocf-rolling-divider";
-      panel.appendChild(divider);
-      const errSection = document.createElement("div");
-      errSection.className = "ocf-rolling-section";
-      errSection.innerHTML = `<div class="ocf-rolling-header"><span class="ocf-rolling-title">Rolling xwOBA</span></div><div class="ocf-rolling-error">Unable to load rolling data</div>`;
-      panel.appendChild(errSection);
+    if (!pitcher) {
+      const hasRollingData = rollingData && (rollingData.plate50?.length || rollingData.plate100?.length || rollingData.plate250?.length);
+      if (hasRollingData) {
+        appendRollingChart(panel, rollingData, pitcher);
+      } else {
+        panel.querySelector(".ocf-rolling-divider")?.remove();
+        panel.querySelector(".ocf-rolling-section")?.remove();
+        const divider = document.createElement("div");
+        divider.className = "ocf-rolling-divider";
+        panel.appendChild(divider);
+        const errSection = document.createElement("div");
+        errSection.className = "ocf-rolling-section";
+        const msg = rollingData ? "Not enough data yet" : "Unable to load rolling data";
+        errSection.innerHTML = `<div class="ocf-rolling-header"><span class="ocf-rolling-title">Rolling xwOBA</span></div><div class="ocf-rolling-error">${msg}</div>`;
+        panel.appendChild(errSection);
+      }
+    }
+
+    // Append FanGraphs section for pitchers
+    if (pitcher && features.fangraphsPanel) {
+      appendFangraphsSection(panel, mlbId);
     }
   }
 
@@ -865,9 +883,9 @@
     section.className = "ocf-rolling-section";
 
     const windows = [
-      { key: "plate50", label: "50" },
-      { key: "plate100", label: "100" },
-      { key: "plate250", label: "250" },
+      { key: "plate50", label: "50 PA" },
+      { key: "plate100", label: "100 PA" },
+      { key: "plate250", label: "250 PA" },
     ];
 
     section.innerHTML = `
@@ -916,6 +934,216 @@
     // Store redraw function for resize handling
     section._redraw = () => parseAndDraw(activeWindow);
     panel._rollingSection = section;
+  }
+
+  // --- FanGraphs Section ---
+
+  const FANGRAPHS_SPLITS = {
+    season: { month: 0, label: "Season" },
+    "60d": { month: 1000, days: 60, label: "60D" },
+    "30d": { month: 3, label: "30D" },
+    "14d": { month: 2, label: "14D" },
+  };
+
+  const FANGRAPHS_METRICS = [
+    { key: "pitching", label: "Pitching+" },
+    { key: "stuff", label: "Stuff+" },
+    { key: "location", label: "Location+" },
+    { key: "xfip", label: "xFIP", inverted: true },
+    { key: "siera", label: "SIERA", inverted: true },
+  ];
+
+  function stuffPlusToPercentile(value) {
+    return Math.max(0, Math.min(100, (value - 50)));
+  }
+
+  async function fetchFangraphsSplit(splitKey) {
+    const split = FANGRAPHS_SPLITS[splitKey];
+    let season = new Date().getFullYear();
+    const msg = {
+      type: "ocf-fetch-fangraphs",
+      season,
+      month: split.month,
+      qual: "y",
+    };
+    // Custom date range for splits like 60D
+    if (split.days) {
+      const end = new Date();
+      const start = new Date(end);
+      start.setDate(start.getDate() - split.days);
+      msg.startdate = start.toLocaleDateString("en-CA");
+      msg.enddate = end.toLocaleDateString("en-CA");
+    }
+    try {
+      let result = await browser.runtime.sendMessage(msg);
+      // If empty, try previous year (offseason)
+      if (result.ok && Object.keys(result.data).length === 0) {
+        season = season - 1;
+        msg.season = season;
+        result = await browser.runtime.sendMessage(msg);
+      }
+      if (!result.ok) return null;
+      return result.data;
+    } catch (e) {
+      console.warn("[OCF] FanGraphs fetch failed:", e);
+      return null;
+    }
+  }
+
+  function computeFangraphsRanks(players, mlbId, metricKey, inverted) {
+    const eligible = [];
+    for (const [id, p] of Object.entries(players)) {
+      if (p[metricKey] != null) {
+        eligible.push({ id, value: p[metricKey] });
+      }
+    }
+    // Higher is better by default; inverted (ERA-like) = lower is better
+    eligible.sort((a, b) => inverted ? a.value - b.value : b.value - a.value);
+
+    // Standard competition ranking with tie detection
+    let rank = 1;
+    const ranks = {};
+    const tiedRanks = new Set();
+    for (let i = 0; i < eligible.length; i++) {
+      if (i > 0 && eligible[i].value !== eligible[i - 1].value) {
+        rank = i + 1;
+      } else if (i > 0) {
+        tiedRanks.add(rank);
+      }
+      ranks[eligible[i].id] = rank;
+    }
+
+    const playerRank = ranks[String(mlbId)];
+    if (playerRank == null) return null;
+    const tied = tiedRanks.has(playerRank);
+    return { rank: playerRank, total: eligible.length, tied };
+  }
+
+  function formatRank(rankInfo) {
+    if (!rankInfo) return "";
+    const prefix = rankInfo.tied ? "T-" : "#";
+    return `${prefix}${rankInfo.rank} / ${rankInfo.total}`;
+  }
+
+  function fangraphsExternalUrl(splitKey) {
+    const split = FANGRAPHS_SPLITS[splitKey];
+    let url = `https://www.fangraphs.com/leaders/major-league?month=${split.month}&pos=all&stats=pit&type=36&qual=y&pagenum=1&pageitems=2000000000&sortcol=14&sortdir=default`;
+    if (split.days) {
+      const end = new Date();
+      const start = new Date(end);
+      start.setDate(start.getDate() - split.days);
+      url += `&startdate=${start.toLocaleDateString("en-CA")}&enddate=${end.toLocaleDateString("en-CA")}`;
+    }
+    return url;
+  }
+
+  function appendFangraphsSection(panel, mlbId) {
+    // Remove any existing section
+    panel.querySelector(".ocf-fangraphs-divider")?.remove();
+    panel.querySelector(".ocf-fangraphs-section")?.remove();
+
+    const divider = document.createElement("div");
+    divider.className = "ocf-fangraphs-divider";
+    panel.appendChild(divider);
+
+    const section = document.createElement("div");
+    section.className = "ocf-fangraphs-section";
+
+    const splits = Object.entries(FANGRAPHS_SPLITS);
+    section.innerHTML = `
+      <div class="ocf-fangraphs-header">
+        <span class="ocf-fangraphs-title">FanGraphs</span>
+        <a class="ocf-fangraphs-link" href="${fangraphsExternalUrl("season")}" target="_blank" rel="noopener noreferrer">
+          <mat-icon class="mat-icon material-icons" style="font-size:14px;width:14px;height:14px;">open_in_new</mat-icon>
+          fg
+        </a>
+      </div>
+      <div class="ocf-fangraphs-body"></div>
+      <div class="ocf-fangraphs-footer">
+        <div class="ocf-fangraphs-toggle">
+          ${splits.map(([key, s]) => `<button data-split="${key}" class="${key === "season" ? "ocf-fangraphs-toggle--active" : ""}">${s.label}</button>`).join("")}
+        </div>
+      </div>
+    `;
+    panel.appendChild(section);
+
+    const body = section.querySelector(".ocf-fangraphs-body");
+    const fgLink = section.querySelector(".ocf-fangraphs-link");
+    let activeSplit = "season";
+
+    function renderBars(players) {
+      body.innerHTML = "";
+
+      const player = players?.[String(mlbId)];
+      if (!player) {
+        body.innerHTML = `<div class="ocf-fangraphs-empty">No data available<br><span style="font-size:9px;color:rgba(255,255,255,0.2)">Qualified starters only</span></div>`;
+        return;
+      }
+
+      for (const metric of FANGRAPHS_METRICS) {
+        const value = player[metric.key];
+        if (value == null) continue;
+
+        let pct, barPct;
+        if (metric.inverted) {
+          // ERA-like: 2.0-6.0 scale, lower is better
+          // Map to 0-100 percentile where 100 = best (lowest ERA)
+          pct = Math.max(0, Math.min(100, ((6.0 - value) / 4.0) * 100));
+          barPct = Math.max(0, Math.min(100, ((6.0 - value) / 4.0) * 100));
+        } else {
+          pct = stuffPlusToPercentile(value);
+          barPct = Math.max(0, Math.min(100, ((value - 50) / 100) * 100));
+        }
+        const color = getPercentileColor(pct);
+        const rankInfo = computeFangraphsRanks(players, mlbId, metric.key, metric.inverted);
+
+        const row = document.createElement("div");
+        row.className = "ocf-fangraphs-row";
+        row.innerHTML = `
+          <span class="ocf-fangraphs-label">${metric.label}</span>
+          <div class="ocf-fangraphs-track">
+            <div class="ocf-fangraphs-fill" style="width:${barPct}%;background:${color}"></div>
+            <span class="ocf-fangraphs-value">${metric.inverted ? value.toFixed(2) : Math.round(value)}</span>
+          </div>
+          <span class="ocf-fangraphs-rank">${formatRank(rankInfo)}</span>
+        `;
+        body.appendChild(row);
+      }
+    }
+
+    function showShimmer() {
+      body.innerHTML = FANGRAPHS_METRICS.map((m) => `
+        <div class="ocf-fangraphs-row">
+          <span class="ocf-fangraphs-label" style="opacity:0.3">${m.label}</span>
+          <div class="ocf-fangraphs-track"><div class="ocf-fangraphs-shimmer"></div></div>
+          <span class="ocf-fangraphs-rank"></span>
+        </div>
+      `).join("");
+    }
+
+    async function loadSplit(splitKey) {
+      fgLink.href = fangraphsExternalUrl(splitKey);
+      showShimmer();
+      const players = await fetchFangraphsSplit(splitKey);
+      if (players) {
+        renderBars(players);
+      } else {
+        body.innerHTML = `<div class="ocf-fangraphs-empty">No data available</div>`;
+      }
+    }
+
+    // Toggle clicks
+    section.querySelector(".ocf-fangraphs-toggle").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-split]");
+      if (!btn || btn.dataset.split === activeSplit) return;
+      section.querySelectorAll(".ocf-fangraphs-toggle button").forEach((b) => b.classList.remove("ocf-fangraphs-toggle--active"));
+      btn.classList.add("ocf-fangraphs-toggle--active");
+      activeSplit = btn.dataset.split;
+      loadSplit(activeSplit);
+    });
+
+    // Initial load
+    loadSplit(activeSplit);
   }
 
   // --- MLB Video API (GraphQL) ---
@@ -1541,7 +1769,7 @@
   }
 
   // Load feature settings then inject
-  browser.storage.sync.get({ bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true }).then((stored) => {
+  browser.storage.sync.get({ bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true }).then((stored) => {
     Object.assign(features, stored);
     scanAndInject();
   });

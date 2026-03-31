@@ -102,6 +102,8 @@
   font-family: Poppins, sans-serif;
   overflow-y: auto;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
@@ -408,6 +410,162 @@
   justify-content: center;
   color: rgba(255, 255, 255, 0.3);
   font-size: 11px;
+}
+
+/* =============================================
+   FanGraphs Stuff+ Section
+   ============================================= */
+
+.ocf-fangraphs-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 6px 14px 0;
+}
+
+.ocf-fangraphs-section {
+  padding: 8px 14px 6px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ocf-fangraphs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 6px;
+}
+
+.ocf-fangraphs-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.ocf-fangraphs-toggle {
+  display: inline-flex;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ocf-fangraphs-toggle button {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ocf-fangraphs-toggle button:not(:last-child) {
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.ocf-fangraphs-toggle button.ocf-fangraphs-toggle--active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.ocf-fangraphs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #8ab4f8 !important;
+  text-decoration: none !important;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.ocf-fangraphs-link:hover {
+  opacity: 1;
+}
+
+.ocf-fangraphs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.ocf-fangraphs-label {
+  width: 70px;
+  min-width: 70px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ocf-fangraphs-track {
+  flex: 1;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.ocf-fangraphs-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.ocf-fangraphs-value {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  z-index: 1;
+}
+
+.ocf-fangraphs-rank {
+  width: 72px;
+  min-width: 72px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ocf-fangraphs-footer {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 8px;
+  margin-top: auto;
+}
+
+.ocf-fangraphs-empty {
+  text-align: center;
+  padding: 12px 0;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.ocf-fangraphs-shimmer {
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: ocf-shimmer 1.5s ease infinite;
 }
 
 /* =============================================

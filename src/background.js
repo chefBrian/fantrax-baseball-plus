@@ -63,6 +63,43 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === "ocf-fetch-fangraphs") {
+    const qual = msg.qual || 0;
+    let url = `https://www.fangraphs.com/api/leaders/major-league/data?pos=all&stats=pit&lg=all&qual=${encodeURIComponent(qual)}&season=${encodeURIComponent(msg.season)}&month=${encodeURIComponent(msg.month)}&ind=0&team=0&pageitems=2000000000&pagenum=1&type=36`;
+    if (msg.startdate && msg.enddate) {
+      url += `&startdate=${encodeURIComponent(msg.startdate)}&enddate=${encodeURIComponent(msg.enddate)}`;
+    }
+    fetch(url, { signal: AbortSignal.timeout(20000) })
+      .then((r) => {
+        if (!r.ok) throw new Error(`FanGraphs ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        // Response is { data: [...] }
+        const rows = data?.data;
+        if (!Array.isArray(rows) || rows.length === 0 || !rows[0].xMLBAMID) {
+          throw new Error("Invalid FanGraphs response");
+        }
+        // Strip to essential fields, keyed by MLB ID
+        const players = {};
+        for (const p of rows) {
+          if (!p.xMLBAMID) continue;
+          players[p.xMLBAMID] = {
+            fgId: p.playerid,
+            ip: p.IP,
+            stuff: p.sp_stuff,
+            location: p.sp_location,
+            pitching: p.sp_pitching,
+            xfip: p.xFIP,
+            siera: p.SIERA,
+          };
+        }
+        sendResponse({ ok: true, data: players });
+      })
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
+
   if (msg.type === "ocf-fetch-statcast") {
     const url = `https://baseballsavant.mlb.com/leaderboard/percentile-rankings?type=${encodeURIComponent(msg.playerType)}&year=2025&position=&team=&player_id=${encodeURIComponent(msg.playerId)}&csv=true`;
     fetch(url, { signal: AbortSignal.timeout(10000) })
