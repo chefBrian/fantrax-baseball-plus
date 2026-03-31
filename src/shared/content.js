@@ -828,7 +828,12 @@
     if (left < 0) left = 0;
     if (left + tipW > wrapWidth) left = wrapWidth - tipW;
     tooltip.style.left = left + "px";
-    tooltip.style.top = above ? (py - tooltip.offsetHeight - 8) + "px" : (py + 8) + "px";
+    const tipH = tooltip.offsetHeight;
+    const wrapHeight = canvas.parentElement.clientHeight;
+    let top = above ? (py - tipH - 8) : (py + 8);
+    if (top < 0) top = 0;
+    if (top + tipH > wrapHeight) top = wrapHeight - tipH;
+    tooltip.style.top = top + "px";
   }
 
   function handleRollingMouseLeave(e) {
