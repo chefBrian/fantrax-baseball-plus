@@ -4,10 +4,15 @@ Browser extension that enhances Fantrax fantasy baseball with quick-access links
 
 ## Screenshots
 
-### Player Modal
-Statcast percentile rankings and quick-access links on the player card.
+### Hitter Card
+Statcast percentile rankings, rolling xwOBA chart, and quick-access links.
 
-![Player Modal](screenshots/PlayerCard.png)
+![Hitter Card](screenshots/HitterCard.png)
+
+### Pitcher Card
+Statcast percentiles, FanGraphs Stuff+/Location+/Pitching+ ratings, and quick-access links.
+
+![Pitcher Card](screenshots/PitcherCard.png)
 
 ### Inline Video
 MLB Film Room highlights with filter tabs and auto-advancing playlist.
@@ -19,11 +24,6 @@ Pulsing live icon links to the stream when a player's game is in progress.
 
 ![Live Matchup](screenshots/LiveMatchup.png)
 
-### Player Tables
-Icons on every row in roster, matchup, transaction, and player search tables.
-
-![Player Search](screenshots/PlayerSearch.png)
-
 ### Settings Panel
 Toggle individual features on/off from the toolbar popup.
 
@@ -32,12 +32,14 @@ Toggle individual features on/off from the toolbar popup.
 ## Features
 
 - **Baseball Reference** - links to the player's BBRef page (direct via MLB ID, search fallback)
-- **Statcast** - links to Baseball Savant player page with percentile rankings panel
+- **Statcast** - links to Baseball Savant player page, plus a percentile rankings panel on the player card with statcast-style colored bars
+- **Rolling xwOBA** - interactive chart on hitter cards showing expected wOBA over a rolling window
+- **FanGraphs** - pitcher cards show Stuff+, Location+, Pitching+, xFIP, and SIERA with percentile-style bars
 - **MLB Video** - inline video modal with filtered highlights
 - **Live Game** - red pulsing icon links directly to the live stream when a player's game is in progress. Exclusive broadcasts (Peacock, Apple TV+, ESPN, Netflix, TBS) link to the correct streaming platform instead of MLB.tv
 
-Links appear in two places:
-- **Player modals** - larger icons next to the player name
+Links and stats appear in two places:
+- **Player modals** - larger icons next to the player name, with Statcast/FanGraphs panels and rolling xwOBA chart below
 - **Roster/matchup/transaction/player search tables** - small icons on the position line
 
 All features can be individually toggled on/off from the extension toolbar popup. Settings sync across devices.
@@ -72,8 +74,9 @@ Clicking the video icon opens a modal with:
 - Content script injects links into Fantrax DOM elements via a MutationObserver
 - MLB player IDs are looked up via the [MLB Stats API](https://statsapi.mlb.com/api/v1/people/search)
 - Videos are fetched from the MLB Film Room GraphQL API (`fastball-gateway.mlb.com`) via the background script
-- Hitter videos use structured queries with `HitResult` and `HitDistance` filters
-- Pitcher highlights use FREETEXT search; strikeout/HR filters use structured queries
+- Hitter videos use structured queries with `HitResult` and `HitDistance` filters; pitcher highlights use FREETEXT search; strikeout/HR filters use structured queries
+- Statcast percentile data is fetched from Baseball Savant; rolling xwOBA chart renders on a `<canvas>` element for hitters
+- FanGraphs pitcher stats (Stuff+, Location+, Pitching+, xFIP, SIERA) are fetched from the FanGraphs leaderboard API
 - `declarativeNetRequest` rules inject headers for `fastball-clips.mlb.com` video playback
 - Live game detection uses the MLB Schedule API (with `broadcasts` hydration), matched to player teams parsed from the Fantrax DOM
 - Exclusive broadcasts (Peacock, Apple TV+, ESPN, Netflix, TBS) are detected via `availabilityCode: "exclusive"` and routed to the streaming platform
