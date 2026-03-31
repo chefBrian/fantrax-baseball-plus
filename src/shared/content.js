@@ -79,9 +79,11 @@
     if (mlbIdCache.has(playerName)) {
       return mlbIdCache.get(playerName);
     }
+    // Strip periods (e.g. "T.J." -> "TJ") since the MLB API doesn't match them
+    const searchName = playerName.replace(/\./g, "");
     try {
       const resp = await fetch(
-        `${MLB_SEARCH_API}${encodeURIComponent(playerName)}`
+        `${MLB_SEARCH_API}${encodeURIComponent(searchName)}`
       );
       if (!resp.ok) return null;
       const data = await resp.json();
