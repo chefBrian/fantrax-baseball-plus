@@ -614,7 +614,7 @@
         panel.appendChild(fgDivider);
         const fgShimmer = document.createElement("div");
         fgShimmer.className = "ocf-fangraphs-section";
-        fgShimmer.innerHTML = `<div class="ocf-fangraphs-header"><span class="ocf-fangraphs-title">FanGraphs</span></div>${FANGRAPHS_METRICS.map((m) => `<div class="ocf-fangraphs-row"><span class="ocf-fangraphs-label" style="opacity:0.3">${m.label}</span><div class="ocf-fangraphs-track"><div class="ocf-fangraphs-shimmer"></div></div><span class="ocf-fangraphs-rank"></span></div>`).join("")}`;
+        fgShimmer.innerHTML = `<div class="ocf-fangraphs-header"><span class="ocf-fangraphs-title">FanGraphs</span></div>${FANGRAPHS_METRICS.map((m) => `<div class="ocf-fangraphs-row"><span class="ocf-statcast-label" style="opacity:0.3">${m.label}</span><div class="ocf-statcast-track"><div class="ocf-statcast-skeleton"></div></div><span class="ocf-fangraphs-value-right"></span></div>`).join("")}`;
         panel.appendChild(fgShimmer);
       }
     } else {
@@ -665,6 +665,33 @@
     if (pitcher && features.fangraphsPanel) {
       appendFangraphsSection(panel, mlbId);
     }
+  }
+
+  // Map statcast row keys to FanGraphs player data keys + formatters
+  const STATCAST_TO_FANGRAPHS = {
+    xera:             { fg: "xera",         fmt: (v) => v.toFixed(2) },
+    fb_velocity:      { fg: "fbv",          fmt: (v) => v.toFixed(1) },
+    exit_velocity:    { fg: "ev",           fmt: (v) => v.toFixed(1) },
+    k_percent:        { fg: "k_pct",        fmt: (v) => (v * 100).toFixed(1) + "%" },
+    bb_percent:       { fg: "bb_pct",       fmt: (v) => (v * 100).toFixed(1) + "%" },
+    chase_percent:    { fg: "chase_pct",     fmt: (v) => (v * 100).toFixed(1) + "%" },
+    whiff_percent:    { fg: "whiff_pct",    fmt: (v) => (v * 100).toFixed(1) + "%" },
+    brl_percent:      { fg: "barrel_pct",   fmt: (v) => (v * 100).toFixed(1) + "%" },
+    hard_hit_percent: { fg: "hard_hit_pct", fmt: (v) => (v * 100).toFixed(1) + "%" },
+  };
+
+  function injectStatcastActualValues(panel, fgPlayer) {
+    // Add actual value or empty placeholder to every statcast row so bars align
+    panel.querySelectorAll(".ocf-statcast-row[data-stat]").forEach((row) => {
+      if (row.querySelector(".ocf-statcast-actual")) return;
+      const statKey = row.dataset.stat;
+      const mapping = STATCAST_TO_FANGRAPHS[statKey];
+      const val = mapping && fgPlayer ? fgPlayer[mapping.fg] : null;
+      const span = document.createElement("span");
+      span.className = "ocf-statcast-actual";
+      span.textContent = val != null ? mapping.fmt(val) : "";
+      row.appendChild(span);
+    });
   }
 
   // --- Rolling xwOBA Chart ---
@@ -1084,28 +1111,22 @@
         const value = player[metric.key];
         if (value == null) continue;
 
-        let pct, barPct;
-        if (metric.inverted) {
-          // ERA-like: 2.0-6.0 scale, lower is better
-          // Map to 0-100 percentile where 100 = best (lowest ERA)
-          pct = Math.max(0, Math.min(100, ((6.0 - value) / 4.0) * 100));
-          barPct = Math.max(0, Math.min(100, ((6.0 - value) / 4.0) * 100));
-        } else {
-          pct = stuffPlusToPercentile(value);
-          barPct = Math.max(0, Math.min(100, ((value - 50) / 100) * 100));
-        }
-        const color = getPercentileColor(pct);
         const rankInfo = computeFangraphsRanks(players, mlbId, metric.key, metric.inverted);
+        // Convert rank to percentile (rank 1 = 99th, last = 0th)
+        const pct = rankInfo ? Math.round((1 - (rankInfo.rank - 1) / (rankInfo.total - 1)) * 100) : 50;
+        const color = getPercentileColor(pct);
+        const barPct = Math.max(pct, 6);
+        const displayValue = metric.inverted ? value.toFixed(2) : Math.round(value);
 
         const row = document.createElement("div");
         row.className = "ocf-fangraphs-row";
         row.innerHTML = `
-          <span class="ocf-fangraphs-label">${metric.label}</span>
-          <div class="ocf-fangraphs-track">
-            <div class="ocf-fangraphs-fill" style="width:${barPct}%;background:${color}"></div>
-            <span class="ocf-fangraphs-value">${metric.inverted ? value.toFixed(2) : Math.round(value)}</span>
+          <span class="ocf-statcast-label ocf-statcast-label--qualified">${metric.label}</span>
+          <div class="ocf-statcast-track">
+            <div class="ocf-statcast-fill" style="width:${barPct}%;background:${color}"></div>
+            <span class="ocf-statcast-pct" style="left:${Math.max(pct, 4)}%;background:${color}">${pct}</span>
           </div>
-          <span class="ocf-fangraphs-rank">${formatRank(rankInfo)}</span>
+          <span class="ocf-fangraphs-value-right">${displayValue}</span>
         `;
         body.appendChild(row);
       }
@@ -1115,18 +1136,21 @@
       body.innerHTML = FANGRAPHS_METRICS.map((m) => `
         <div class="ocf-fangraphs-row">
           <span class="ocf-fangraphs-label" style="opacity:0.3">${m.label}</span>
-          <div class="ocf-fangraphs-track"><div class="ocf-fangraphs-shimmer"></div></div>
-          <span class="ocf-fangraphs-rank"></span>
+          <div class="ocf-statcast-track"><div class="ocf-statcast-skeleton"></div></div>
+          <span class="ocf-fangraphs-value-right"></span>
         </div>
       `).join("");
     }
 
-    async function loadSplit(splitKey) {
+    async function loadSplit(splitKey, injectActuals) {
       fgLink.href = fangraphsExternalUrl(splitKey);
       showShimmer();
       const players = await fetchFangraphsSplit(splitKey);
       if (players) {
         renderBars(players);
+        if (injectActuals) {
+          injectStatcastActualValues(panel, players[String(mlbId)]);
+        }
       } else {
         body.innerHTML = `<div class="ocf-fangraphs-empty">No data available</div>`;
       }
@@ -1142,8 +1166,8 @@
       loadSplit(activeSplit);
     });
 
-    // Initial load
-    loadSplit(activeSplit);
+    // Initial load (season) - also inject actual values into Statcast bars
+    loadSplit(activeSplit, true);
   }
 
   // --- MLB Video API (GraphQL) ---

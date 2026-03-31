@@ -256,6 +256,16 @@
   transition: left 0.3s ease, background-color 0.3s ease;
 }
 
+.ocf-statcast-actual {
+  width: 42px;
+  min-width: 42px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: right;
+  white-space: nowrap;
+}
+
 .ocf-statcast-label--nq {
   opacity: 0.3;
 }
@@ -497,47 +507,13 @@
   padding: 3px 0;
 }
 
-.ocf-fangraphs-label {
-  width: 70px;
-  min-width: 70px;
+.ocf-fangraphs-value-right {
+  width: 38px;
+  min-width: 38px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.65);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
   text-align: right;
-  white-space: nowrap;
-}
-
-.ocf-fangraphs-track {
-  flex: 1;
-  height: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 2px;
-  position: relative;
-  overflow: hidden;
-}
-
-.ocf-fangraphs-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s ease, background-color 0.3s ease;
-}
-
-.ocf-fangraphs-value {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 10px;
-  font-weight: 700;
-  color: #fff;
-  z-index: 1;
-}
-
-.ocf-fangraphs-rank {
-  width: 72px;
-  min-width: 72px;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.45);
-  text-align: left;
   white-space: nowrap;
 }
 
@@ -558,14 +534,6 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-}
-
-.ocf-fangraphs-shimmer {
-  height: 18px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
-  background-size: 200% 100%;
-  animation: ocf-shimmer 1.5s ease infinite;
 }
 
 /* =============================================
