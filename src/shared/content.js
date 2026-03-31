@@ -1137,7 +1137,7 @@
     function showShimmer() {
       body.innerHTML = FANGRAPHS_METRICS.map((m) => `
         <div class="ocf-fangraphs-row">
-          <span class="ocf-fangraphs-label" style="opacity:0.3">${m.label}</span>
+          <span class="ocf-statcast-label" style="opacity:0.3">${m.label}</span>
           <div class="ocf-statcast-track"><div class="ocf-statcast-skeleton"></div></div>
           <span class="ocf-fangraphs-value-right"></span>
         </div>
