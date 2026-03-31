@@ -1,6 +1,6 @@
 # FantraxBaseball+
 
-Browser extension that enhances Fantrax fantasy baseball with quick-access links and live game integration. Available for Chrome and Firefox.
+Browser extension that enhances Fantrax fantasy baseball with Statcast and FanGraphs data, quick-access links, and live game integration. Available for Chrome and Firefox.
 
 ## Screenshots
 
