@@ -51,6 +51,18 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === "ocf-fetch-rolling") {
+    const url = `https://baseballsavant.mlb.com/player-services/rolling-thumb?playerId=${encodeURIComponent(msg.playerId)}`;
+    fetch(url, { signal: AbortSignal.timeout(10000) })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Savant rolling ${r.status}`);
+        return r.json();
+      })
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
+
   if (msg.type === "ocf-fetch-statcast") {
     const url = `https://baseballsavant.mlb.com/leaderboard/percentile-rankings?type=${encodeURIComponent(msg.playerType)}&year=2025&position=&team=&player_id=${encodeURIComponent(msg.playerId)}&csv=true`;
     fetch(url, { signal: AbortSignal.timeout(10000) })

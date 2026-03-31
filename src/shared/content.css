@@ -108,7 +108,7 @@
 
 /* Header */
 .ocf-statcast-header {
-  padding: 12px 14px 0;
+  padding: 10px 14px 0;
   position: sticky;
   top: 0;
   background: #1a1d21;
@@ -119,7 +119,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .ocf-statcast-year {
@@ -190,7 +190,7 @@
 
 /* Body */
 .ocf-statcast-body {
-  padding: 0 14px 14px;
+  padding: 0 14px 8px;
 }
 
 .ocf-statcast-section-title {
@@ -302,6 +302,111 @@
   text-align: center;
   padding: 24px 16px;
   color: rgba(255, 255, 255, 0.35);
+  font-size: 11px;
+}
+
+/* =============================================
+   Rolling xwOBA Chart
+   ============================================= */
+
+.ocf-rolling-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 6px 14px 0;
+}
+
+.ocf-rolling-section {
+  padding: 8px 14px 6px;
+}
+
+.ocf-rolling-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ocf-rolling-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ocf-rolling-toggle {
+  display: inline-flex;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ocf-rolling-toggle button {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ocf-rolling-toggle button:not(:last-child) {
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.ocf-rolling-toggle button.ocf-rolling-toggle--active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.ocf-rolling-canvas-wrap {
+  position: relative;
+  height: 140px;
+  overflow: visible;
+}
+
+.ocf-rolling-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ocf-rolling-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: #22262b;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: #fff;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 2;
+}
+
+.ocf-rolling-tooltip--visible {
+  opacity: 1;
+}
+
+.ocf-rolling-shimmer {
+  height: 140px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: ocf-shimmer 1.5s ease infinite;
+}
+
+.ocf-rolling-error {
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.3);
   font-size: 11px;
 }
 

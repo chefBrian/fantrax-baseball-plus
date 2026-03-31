@@ -407,10 +407,7 @@
     const bodyHTML = pitcher
       ? `<div class="ocf-statcast-section-title">Pitching</div>
          ${buildStatRowsHTML(PITCHING_PERCENTILE_STATS)}`
-      : `<div class="ocf-statcast-section-title">Batting</div>
-         ${buildStatRowsHTML(BATTING_PERCENTILE_STATS)}
-         <div class="ocf-statcast-section-title">Running</div>
-         ${buildStatRowsHTML(SPEED_PERCENTILE_STATS)}`;
+      : buildStatRowsHTML([...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS]);
 
     panel.innerHTML = `
       <div class="ocf-statcast-header">
@@ -512,12 +509,11 @@
     const panel = document.createElement("div");
     panel.className = "ocf-statcast-panel";
     const skeletonRows = skeletonStats
-      .map(({ label }, i) => `
+      .map(({ label }) => `
         <div class="ocf-statcast-row">
           <span class="ocf-statcast-label" style="opacity:0.3">${label}</span>
           <div class="ocf-statcast-track"><div class="ocf-statcast-skeleton"></div></div>
         </div>
-        ${i === BATTING_PERCENTILE_STATS.length - 1 ? '<div class="ocf-statcast-section-title">Running</div>' : ""}
       `).join("");
     panel.innerHTML = `
       <div class="ocf-statcast-header">
@@ -535,7 +531,6 @@
         </div>
       </div>
       <div class="ocf-statcast-body">
-        <div class="ocf-statcast-section-title">Batting</div>
         ${skeletonRows}
       </div>
     `;
@@ -582,7 +577,12 @@
       rafPending = true;
       requestAnimationFrame(() => {
         rafPending = false;
-        if (document.contains(overlayPane)) updatePosition();
+        if (document.contains(overlayPane)) {
+          updatePosition();
+          if (panel._rollingSection && panel._rollingSection._redraw) {
+            panel._rollingSection._redraw();
+          }
+        }
       });
     };
     window.addEventListener("resize", resizeHandler);
@@ -606,17 +606,304 @@
             '<div class="ocf-statcast-skeleton"></div>')}
         `;
       }
+    } else {
+      // Show rolling chart shimmer placeholder for hitters while loading
+      const divider = document.createElement("div");
+      divider.className = "ocf-rolling-divider";
+      panel.appendChild(divider);
+      const shimmerSection = document.createElement("div");
+      shimmerSection.className = "ocf-rolling-section";
+      shimmerSection.innerHTML = `<div class="ocf-rolling-header"><span class="ocf-rolling-title">Rolling xwOBA</span></div><div class="ocf-rolling-shimmer"></div>`;
+      panel.appendChild(shimmerSection);
     }
 
     const mlbId = await lookupMlbId(playerName);
     if (!mlbId || requestId !== statcastPanelRequestId) return;
     if (!document.contains(panel)) return;
 
-    const yearData = await fetchStatcastPercentiles(mlbId, pitcher ? "pitcher" : "batter");
+    // Fetch percentiles and rolling data in parallel
+    const [yearData, rollingData] = await Promise.all([
+      fetchStatcastPercentiles(mlbId, pitcher ? "pitcher" : "batter"),
+      pitcher ? Promise.resolve(null) : fetchRollingData(mlbId),
+    ]);
     if (!yearData || requestId !== statcastPanelRequestId) return;
     if (!document.contains(panel)) return;
 
     populateStatcastPanel(panel, yearData, playerName, mlbId, pitcher);
+
+    // Append rolling xwOBA chart for hitters
+    if (!pitcher && rollingData) {
+      appendRollingChart(panel, rollingData, pitcher);
+    } else if (!pitcher && !rollingData) {
+      // Show error for fetch failure (not pitchers)
+      panel.querySelector(".ocf-rolling-divider")?.remove();
+      panel.querySelector(".ocf-rolling-section")?.remove();
+      const divider = document.createElement("div");
+      divider.className = "ocf-rolling-divider";
+      panel.appendChild(divider);
+      const errSection = document.createElement("div");
+      errSection.className = "ocf-rolling-section";
+      errSection.innerHTML = `<div class="ocf-rolling-header"><span class="ocf-rolling-title">Rolling xwOBA</span></div><div class="ocf-rolling-error">Unable to load rolling data</div>`;
+      panel.appendChild(errSection);
+    }
+  }
+
+  // --- Rolling xwOBA Chart ---
+
+  const rollingCache = new Map();
+
+  async function fetchRollingData(mlbId) {
+    if (rollingCache.has(mlbId)) return rollingCache.get(mlbId);
+    try {
+      const result = await browser.runtime.sendMessage({
+        type: "ocf-fetch-rolling",
+        playerId: mlbId,
+      });
+      if (!result.ok) return null;
+      rollingCache.set(mlbId, result.data);
+      return result.data;
+    } catch (e) {
+      console.warn("[OCF] Rolling fetch failed:", e);
+      return null;
+    }
+  }
+
+  function getRollingColor(xwoba) {
+    const stops = [
+      { v: 0.200, r: 0, g: 0, b: 255 },
+      { v: 0.290, r: 194, g: 194, b: 205 },
+      { v: 0.310, r: 194, g: 194, b: 194 },
+      { v: 0.330, r: 194, g: 194, b: 194 },
+      { v: 0.400, r: 255, g: 0, b: 0 },
+    ];
+    if (xwoba <= stops[0].v) return `rgb(${stops[0].r},${stops[0].g},${stops[0].b})`;
+    if (xwoba >= stops[4].v) return `rgb(${stops[4].r},${stops[4].g},${stops[4].b})`;
+    for (let i = 0; i < stops.length - 1; i++) {
+      if (xwoba <= stops[i + 1].v) {
+        const t = (xwoba - stops[i].v) / (stops[i + 1].v - stops[i].v);
+        const r = Math.round(stops[i].r + t * (stops[i + 1].r - stops[i].r));
+        const g = Math.round(stops[i].g + t * (stops[i + 1].g - stops[i].g));
+        const b = Math.round(stops[i].b + t * (stops[i + 1].b - stops[i].b));
+        return `rgb(${r},${g},${b})`;
+      }
+    }
+    return `rgb(255,0,0)`;
+  }
+
+  function formatRollingDate(dateStr) {
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const day = d.getUTCDate();
+    const suffix = [, "st", "nd", "rd"][day % 10 > 3 ? 0 : (day % 100 - day % 10 !== 10) * (day % 10)] || "th";
+    return `${months[d.getUTCMonth()]} ${day}${suffix}`;
+  }
+
+  function drawRollingChart(canvas, data, tooltip) {
+    if (!data || data.length === 0) return;
+
+    const container = canvas.parentElement;
+    const cssWidth = container.clientWidth;
+    const cssHeight = 140;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+    canvas.style.width = cssWidth + "px";
+    canvas.style.height = cssHeight + "px";
+
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    const padLeft = 38;
+    const padRight = 8;
+    const padTop = 10;
+    const padBottom = 10;
+    const chartW = cssWidth - padLeft - padRight;
+    const chartH = cssHeight - padTop - padBottom;
+
+    const yMin = 0.150;
+    const yMax = 0.530;
+
+    function xPos(i) { return padLeft + (i / (data.length - 1)) * chartW; }
+    function yPos(val) { return padTop + (1 - (val - yMin) / (yMax - yMin)) * chartH; }
+
+    // Clear
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    // Gridlines
+    const gridValues = [0.200, 0.300, 0.400, 0.500];
+    ctx.font = "9px Poppins, sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const gv of gridValues) {
+      const gy = yPos(gv);
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padLeft, gy);
+      ctx.lineTo(padLeft + chartW, gy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,0.3)";
+      ctx.fillText(gv.toFixed(3), padLeft - 4, gy);
+    }
+
+    // League average line at .310
+    const lgY = yPos(0.310);
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padLeft, lgY);
+    ctx.lineTo(padLeft + chartW, lgY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.textAlign = "left";
+    ctx.fillText("LG AVG", padLeft + 2, lgY - 7);
+
+    // Data line - colored segments
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    for (let i = 0; i < data.length - 1; i++) {
+      const x1 = xPos(i);
+      const y1 = yPos(data[i].xwoba);
+      const x2 = xPos(i + 1);
+      const y2 = yPos(data[i + 1].xwoba);
+      const midVal = (data[i].xwoba + data[i + 1].xwoba) / 2;
+      ctx.strokeStyle = getRollingColor(midVal);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    // Store data for tooltip hit testing
+    canvas._rollingData = data;
+    canvas._xPos = xPos;
+    canvas._yPos = yPos;
+    canvas._tooltip = tooltip;
+    canvas._padLeft = padLeft;
+    canvas._chartW = chartW;
+  }
+
+  function handleRollingMouseMove(e) {
+    const canvas = e.currentTarget;
+    const data = canvas._rollingData;
+    const tooltip = canvas._tooltip;
+    if (!data || !tooltip) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+
+    // Find nearest point by x
+    let closest = 0;
+    let closestDist = Infinity;
+    for (let i = 0; i < data.length; i++) {
+      const px = canvas._xPos(i);
+      const dist = Math.abs(mx - px);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = i;
+      }
+    }
+
+    if (closestDist > 20) {
+      tooltip.classList.remove("ocf-rolling-tooltip--visible");
+      return;
+    }
+
+    const pt = data[closest];
+    const px = canvas._xPos(closest);
+    const py = canvas._yPos(pt.xwoba);
+    tooltip.innerHTML = `<div>xwOBA: <b>${pt.xwoba.toFixed(3)}</b></div><div>Last PA: ${formatRollingDate(pt.max_game_date)}</div>`;
+    tooltip.classList.add("ocf-rolling-tooltip--visible");
+
+    // Position tooltip, clamping horizontally within the canvas wrapper
+    const above = pt.xwoba > 0.330;
+    const wrapWidth = canvas.parentElement.clientWidth;
+    const tipW = tooltip.offsetWidth;
+    let left = px - tipW / 2;
+    if (left < 0) left = 0;
+    if (left + tipW > wrapWidth) left = wrapWidth - tipW;
+    tooltip.style.left = left + "px";
+    tooltip.style.top = above ? (py - tooltip.offsetHeight - 8) + "px" : (py + 8) + "px";
+  }
+
+  function handleRollingMouseLeave(e) {
+    const tooltip = e.currentTarget._tooltip;
+    if (tooltip) tooltip.classList.remove("ocf-rolling-tooltip--visible");
+  }
+
+  function appendRollingChart(panel, rollingData, pitcher) {
+    // Skip for pitchers or empty data
+    if (pitcher) return;
+    if (!rollingData || (!rollingData.plate50?.length && !rollingData.plate100?.length && !rollingData.plate250?.length)) return;
+
+    // Remove any existing rolling section
+    panel.querySelector(".ocf-rolling-divider")?.remove();
+    panel.querySelector(".ocf-rolling-section")?.remove();
+
+    const divider = document.createElement("div");
+    divider.className = "ocf-rolling-divider";
+    panel.appendChild(divider);
+
+    const section = document.createElement("div");
+    section.className = "ocf-rolling-section";
+
+    const windows = [
+      { key: "plate50", label: "50" },
+      { key: "plate100", label: "100" },
+      { key: "plate250", label: "250" },
+    ];
+
+    section.innerHTML = `
+      <div class="ocf-rolling-header">
+        <span class="ocf-rolling-title">Rolling xwOBA</span>
+        <div class="ocf-rolling-toggle">
+          ${windows.map((w) => `<button data-window="${w.key}" class="${w.key === "plate50" ? "ocf-rolling-toggle--active" : ""}">${w.label}</button>`).join("")}
+        </div>
+      </div>
+      <div class="ocf-rolling-canvas-wrap">
+        <canvas></canvas>
+        <div class="ocf-rolling-tooltip"></div>
+      </div>
+    `;
+    panel.appendChild(section);
+
+    const canvasEl = section.querySelector("canvas");
+    const tooltipEl = section.querySelector(".ocf-rolling-tooltip");
+    let activeWindow = "plate50";
+
+    function parseAndDraw(key) {
+      const arr = rollingData[key];
+      if (!arr || arr.length === 0) return;
+      // API returns rn=1 as most recent - reverse for chronological order
+      const sorted = arr.slice().sort((a, b) => b.rn - a.rn);
+      const parsed = sorted.map((d) => ({ xwoba: parseFloat(d.xwoba), max_game_date: d.max_game_date }));
+      drawRollingChart(canvasEl, parsed, tooltipEl);
+    }
+
+    parseAndDraw(activeWindow);
+
+    // PA toggle
+    section.querySelector(".ocf-rolling-toggle").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-window]");
+      if (!btn) return;
+      section.querySelectorAll(".ocf-rolling-toggle button").forEach((b) => b.classList.remove("ocf-rolling-toggle--active"));
+      btn.classList.add("ocf-rolling-toggle--active");
+      activeWindow = btn.dataset.window;
+      parseAndDraw(activeWindow);
+    });
+
+    // Tooltip events
+    canvasEl.addEventListener("mousemove", handleRollingMouseMove);
+    canvasEl.addEventListener("mouseleave", handleRollingMouseLeave);
+
+    // Store redraw function for resize handling
+    section._redraw = () => parseAndDraw(activeWindow);
+    panel._rollingSection = section;
   }
 
   // --- MLB Video API (GraphQL) ---
