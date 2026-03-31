@@ -289,6 +289,7 @@
   const PITCHING_PERCENTILE_STATS = [
     { key: "xera", label: "xERA" },
     { key: "xba", label: "xBA" },
+    { key: "xslg", label: "xSLG" },
     { key: "fb_velocity", label: "Fastball Velo" },
     { key: "exit_velocity", label: "Avg Exit Velo" },
     { key: "chase_percent", label: "Chase %" },
@@ -631,20 +632,12 @@
 
     populateStatcastPanel(panel, yearData, playerName, mlbId, pitcher);
 
-    // Append rolling xwOBA chart for hitters
+    // Append rolling xwOBA chart for hitters only
     if (!pitcher && rollingData) {
       appendRollingChart(panel, rollingData, pitcher);
-    } else if (!pitcher && !rollingData) {
-      // Show error for fetch failure (not pitchers)
+    } else if (!pitcher) {
       panel.querySelector(".ocf-rolling-divider")?.remove();
       panel.querySelector(".ocf-rolling-section")?.remove();
-      const divider = document.createElement("div");
-      divider.className = "ocf-rolling-divider";
-      panel.appendChild(divider);
-      const errSection = document.createElement("div");
-      errSection.className = "ocf-rolling-section";
-      errSection.innerHTML = `<div class="ocf-rolling-header"><span class="ocf-rolling-title">Rolling xwOBA</span></div><div class="ocf-rolling-error">Unable to load rolling data</div>`;
-      panel.appendChild(errSection);
     }
   }
 
@@ -668,14 +661,22 @@
     }
   }
 
-  function getRollingColor(xwoba) {
-    const stops = [
-      { v: 0.200, r: 0, g: 0, b: 255 },
-      { v: 0.290, r: 194, g: 194, b: 205 },
-      { v: 0.310, r: 194, g: 194, b: 194 },
-      { v: 0.330, r: 194, g: 194, b: 194 },
-      { v: 0.400, r: 255, g: 0, b: 0 },
-    ];
+  function getRollingColor(xwoba, pitcher) {
+    const stops = pitcher
+      ? [
+          { v: 0.200, r: 255, g: 0, b: 0 },
+          { v: 0.290, r: 194, g: 194, b: 194 },
+          { v: 0.310, r: 194, g: 194, b: 194 },
+          { v: 0.330, r: 194, g: 194, b: 205 },
+          { v: 0.400, r: 0, g: 0, b: 255 },
+        ]
+      : [
+          { v: 0.200, r: 0, g: 0, b: 255 },
+          { v: 0.290, r: 194, g: 194, b: 205 },
+          { v: 0.310, r: 194, g: 194, b: 194 },
+          { v: 0.330, r: 194, g: 194, b: 194 },
+          { v: 0.400, r: 255, g: 0, b: 0 },
+        ];
     if (xwoba <= stops[0].v) return `rgb(${stops[0].r},${stops[0].g},${stops[0].b})`;
     if (xwoba >= stops[4].v) return `rgb(${stops[4].r},${stops[4].g},${stops[4].b})`;
     for (let i = 0; i < stops.length - 1; i++) {
@@ -699,7 +700,7 @@
     return `${months[d.getUTCMonth()]} ${day}${suffix}`;
   }
 
-  function drawRollingChart(canvas, data, tooltip) {
+  function drawRollingChart(canvas, data, tooltip, pitcher) {
     if (!data || data.length === 0) return;
 
     const container = canvas.parentElement;
@@ -772,7 +773,7 @@
       const x2 = xPos(i + 1);
       const y2 = yPos(data[i + 1].xwoba);
       const midVal = (data[i].xwoba + data[i + 1].xwoba) / 2;
-      ctx.strokeStyle = getRollingColor(midVal);
+      ctx.strokeStyle = getRollingColor(midVal, pitcher);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -842,8 +843,6 @@
   }
 
   function appendRollingChart(panel, rollingData, pitcher) {
-    // Skip for pitchers or empty data
-    if (pitcher) return;
     if (!rollingData || (!rollingData.plate50?.length && !rollingData.plate100?.length && !rollingData.plate250?.length)) return;
 
     // Remove any existing rolling section
@@ -887,7 +886,7 @@
       // API returns rn=1 as most recent - reverse for chronological order
       const sorted = arr.slice().sort((a, b) => b.rn - a.rn);
       const parsed = sorted.map((d) => ({ xwoba: parseFloat(d.xwoba), max_game_date: d.max_game_date }));
-      drawRollingChart(canvasEl, parsed, tooltipEl);
+      drawRollingChart(canvasEl, parsed, tooltipEl, pitcher);
     }
 
     parseAndDraw(activeWindow);
