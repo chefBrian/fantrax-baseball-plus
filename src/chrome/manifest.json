@@ -18,7 +18,8 @@
     "https://fastball-gateway.mlb.com/*",
     "https://statsapi.mlb.com/*",
     "https://fastball-clips.mlb.com/*",
-    "https://baseballsavant.mlb.com/*"
+    "https://baseballsavant.mlb.com/*",
+    "https://www.fangraphs.com/*"
   ],
   "background": {
     "service_worker": "background.js"

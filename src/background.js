@@ -1,5 +1,22 @@
 const browser = globalThis.browser || globalThis.chrome;
 
+// Firefox: rewrite Origin/Referer on FanGraphs requests to avoid Cloudflare challenge
+// (Chrome handles this via declarativeNetRequest rules.json)
+if (typeof browser.webRequest !== "undefined") {
+  browser.webRequest.onBeforeSendHeaders.addListener(
+    (details) => {
+      const headers = details.requestHeaders.map((h) => {
+        if (h.name.toLowerCase() === "origin") return { name: h.name, value: "https://www.fangraphs.com" };
+        if (h.name.toLowerCase() === "referer") return { name: h.name, value: "https://www.fangraphs.com/" };
+        return h;
+      });
+      return { requestHeaders: headers };
+    },
+    { urls: ["https://www.fangraphs.com/api/*"] },
+    ["blocking", "requestHeaders"]
+  );
+}
+
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "ocf-fetch-videos") {
     fetch("https://fastball-gateway.mlb.com/graphql", {

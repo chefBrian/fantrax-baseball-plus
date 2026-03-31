@@ -13,5 +13,20 @@
       "urlFilter": "||fastball-clips.mlb.com",
       "resourceTypes": ["xmlhttprequest", "media", "other"]
     }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        { "header": "Origin", "operation": "set", "value": "https://www.fangraphs.com" },
+        { "header": "Referer", "operation": "set", "value": "https://www.fangraphs.com/" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||www.fangraphs.com/api/",
+      "resourceTypes": ["xmlhttprequest"]
+    }
   }
 ]

@@ -5,7 +5,9 @@
   "description": "Adds Statcast, MLB Video, and live MLB.tv links to Fantrax fantasy baseball players",
   "permissions": [
     "declarativeNetRequest",
-    "storage"
+    "storage",
+    "webRequest",
+    "webRequestBlocking"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -18,7 +20,8 @@
     "https://fastball-gateway.mlb.com/*",
     "https://statsapi.mlb.com/*",
     "https://fastball-clips.mlb.com/*",
-    "https://baseballsavant.mlb.com/*"
+    "https://baseballsavant.mlb.com/*",
+    "https://www.fangraphs.com/*"
   ],
   "background": {
     "scripts": ["background.js"]
