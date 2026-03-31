@@ -1009,11 +1009,11 @@
         msg.season = season;
         result = await browser.runtime.sendMessage(msg);
       }
-      if (!result.ok) return null;
+      if (!result.ok) return { error: result.error || "Unknown error" };
       return result.data;
     } catch (e) {
       console.warn("[OCF] FanGraphs fetch failed:", e);
-      return null;
+      return { error: e.message };
     }
   }
 
@@ -1146,7 +1146,9 @@
       fgLink.href = fangraphsExternalUrl(splitKey);
       showShimmer();
       const players = await fetchFangraphsSplit(splitKey);
-      if (players) {
+      if (players?.error) {
+        body.innerHTML = `<div class="ocf-fangraphs-empty">FanGraphs data unavailable</div>`;
+      } else if (players) {
         renderBars(players);
         if (injectActuals) {
           injectStatcastActualValues(panel, players[String(mlbId)]);
