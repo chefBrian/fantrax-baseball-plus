@@ -636,8 +636,16 @@
     if (!pitcher && rollingData) {
       appendRollingChart(panel, rollingData, pitcher);
     } else if (!pitcher) {
+      // Show error for fetch failure
       panel.querySelector(".ocf-rolling-divider")?.remove();
       panel.querySelector(".ocf-rolling-section")?.remove();
+      const divider = document.createElement("div");
+      divider.className = "ocf-rolling-divider";
+      panel.appendChild(divider);
+      const errSection = document.createElement("div");
+      errSection.className = "ocf-rolling-section";
+      errSection.innerHTML = `<div class="ocf-rolling-header"><span class="ocf-rolling-title">Rolling xwOBA</span></div><div class="ocf-rolling-error">Unable to load rolling data</div>`;
+      panel.appendChild(errSection);
     }
   }
 
