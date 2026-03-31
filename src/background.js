@@ -92,6 +92,15 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             pitching: p.sp_pitching,
             xfip: p.xFIP,
             siera: p.SIERA,
+            xera: p.xERA,
+            ev: p.EV,
+            barrel_pct: p["Barrel%"],
+            hard_hit_pct: p["HardHit%"],
+            k_pct: p["K%"],
+            bb_pct: p["BB%"],
+            fbv: p.FBv,
+            chase_pct: p["O-Swing%"],
+            whiff_pct: p["SwStr%"],
           };
         }
         sendResponse({ ok: true, data: players });
