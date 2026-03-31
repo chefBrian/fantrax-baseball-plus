@@ -1670,6 +1670,12 @@
         const fullName = abbrNameMap.get(playerName);
         if (!fullName) {
           fetchScorerNames(); // Triggers API call + re-scan on first encounter
+          // Remove stale links from recycled DOM elements so they don't point to the wrong player
+          const scorerInfo = nameLink.closest(".scorer__info");
+          if (scorerInfo) {
+            const stale = scorerInfo.querySelector(".ocf-links--sm");
+            if (stale) stale.remove();
+          }
           continue;
         }
         playerName = fullName;
