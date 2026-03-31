@@ -12,7 +12,12 @@
   const mlbIdCache = new Map();
   let scheduleData = null;
   let schedulePromise = null;
-  const LIVE_POLL_INTERVAL = 120000; // 2 minutes
+
+  // Detect live game scores in DOM text (e.g., "ATH 0@ATL 3", "ATH 0 @ ATL 3 Bot 2nd")
+  // Matches "TEAM #@TEAM #" or "TEAM # @ TEAM #" - present for live and final games, absent for scheduled
+  const GAME_SCORE_RE = /[A-Z]{2,4}\s+\d+\s*@\s*[A-Z]{2,4}\s+\d+/;
+  // Final games end with "F" after the score (e.g., "MIN 1@KC 3 F")
+  const FINAL_SCORE_RE = /[A-Z]{2,4}\s+\d+\s*@\s*[A-Z]{2,4}\s+\d+\s*F\b/;
 
   // Map abbreviated names ("C. Emerson") -> full names ("Corbin Emerson")
   const abbrNameMap = new Map();
@@ -159,9 +164,9 @@
     return a;
   }
 
-  async function maybeShowLiveIcon(liveIcon, teamStr) {
+  async function maybeShowLiveIcon(liveIcon, teamStr, forceRefresh = false) {
     if (!teamStr) return;
-    const schedule = await fetchTodaySchedule();
+    const schedule = await fetchTodaySchedule(forceRefresh);
     if (!schedule) return;
 
     const game = schedule.get(teamStr);
@@ -171,6 +176,78 @@
     liveIcon.href = url;
     liveIcon.title = title;
     liveIcon.style.display = "";
+  }
+
+  // --- DOM-based live game detection ---
+
+  // Get the Opp cell text for a scorer element by page layout type
+  function getOppText(scorerEl) {
+    // i-table layout (roster, players pages) - scorer and Opp in same row
+    const iRow = scorerEl.closest(".i-table__row");
+    if (iRow) {
+      const oppCell = iRow.querySelector(".i-table__cell--small");
+      return oppCell?.textContent?.trim() || null;
+    }
+
+    // ultimate-table layout (livescoring page) - split DOM trees, index-aligned
+    const utAside = scorerEl.closest("aside._ut__aside");
+    if (utAside) {
+      const scorerCell = scorerEl.closest("td");
+      if (!scorerCell) return null;
+      const index = [...utAside.children].indexOf(scorerCell);
+      if (index === -1) return null;
+      const utContent = utAside.parentElement?.querySelector("div._ut__content");
+      const container = utContent?.querySelector("tbody") || utContent?.querySelector("table");
+      const rows = container ? [...container.querySelectorAll(":scope > tr")] : [];
+      return rows[index]?.querySelector("td")?.textContent?.trim() || null;
+    }
+
+    // No Opp column (transactions, news, etc.)
+    return null;
+  }
+
+  // Check if the Opp column text indicates a live (in-progress) game
+  function isOppLive(text) {
+    if (!text) return false;
+    if (!GAME_SCORE_RE.test(text)) return false; // scheduled or no game
+    if (FINAL_SCORE_RE.test(text)) return false; // final
+    return true;
+  }
+
+  // Check DOM for live game status; returns true/false/null (null = no Opp column)
+  function isLiveFromDOM(scorerEl) {
+    const oppText = getOppText(scorerEl);
+    if (oppText === null) return null;
+    return isOppLive(oppText);
+  }
+
+  // Show live icon using cached schedule data (for gamePk and broadcast info)
+  async function showLiveIconFromSchedule(liveIcon, teamStr) {
+    if (!teamStr) return;
+    const schedule = await fetchTodaySchedule();
+    if (!schedule) return;
+    const game = schedule.get(teamStr);
+    if (!game) return;
+    const { url, title } = getLiveGameInfo(game);
+    liveIcon.href = url;
+    liveIcon.title = title;
+    liveIcon.style.display = "";
+  }
+
+  // Re-check a single live icon against the DOM Opp column
+  function updateLiveIconFromDOM(liveIcon) {
+    const links = liveIcon.closest(".ocf-links--sm");
+    if (!links) return;
+    const scorer = links.closest("scorer") || links.closest(".scorer");
+    if (!scorer) return;
+    const live = isLiveFromDOM(scorer);
+    if (live === true && liveIcon.style.display === "none") {
+      const teamStr = getTeamFromScorer(scorer);
+      showLiveIconFromSchedule(liveIcon, teamStr);
+    } else if (live === false) {
+      liveIcon.style.display = "none";
+    }
+    // live === null: no Opp column, don't change (handled by API on initial load)
   }
 
   function makeUrlName(name) {
@@ -1059,7 +1136,12 @@
         const liveIcon = existing.querySelector(".ocf-link--live");
         if (liveIcon) {
           liveIcon.style.display = "none";
-          maybeShowLiveIcon(liveIcon, teamAbbr);
+          const live = isLiveFromDOM(scorerEl);
+          if (live === true) {
+            showLiveIconFromSchedule(liveIcon, teamAbbr);
+          } else if (live === null) {
+            maybeShowLiveIcon(liveIcon, teamAbbr);
+          }
         }
         continue;
       }
@@ -1067,7 +1149,13 @@
       const links = buildLinks(playerName, positionText, "sm");
       if (features.liveGame) {
         const liveIcon = createLiveIcon(links);
-        maybeShowLiveIcon(liveIcon, teamAbbr);
+        const live = isLiveFromDOM(scorerEl);
+        if (live === true) {
+          showLiveIconFromSchedule(liveIcon, teamAbbr);
+        } else if (live === null) {
+          // No Opp column (transactions, etc.) - fall back to one-time API check
+          maybeShowLiveIcon(liveIcon, teamAbbr);
+        }
       }
 
       const posDiv = scorerInfo.querySelector(".scorer__info__positions");
@@ -1127,7 +1215,7 @@
 
       if (features.liveGame) {
         const liveIcon = createLiveIcon(links);
-        maybeShowLiveIcon(liveIcon, teamName);
+        maybeShowLiveIcon(liveIcon, teamName, true);
       }
 
       // Populate the skeleton panel if it's already showing, otherwise create fresh
@@ -1243,12 +1331,18 @@
 
   const observer = new MutationObserver((mutations) => {
     const scorerRoots = [];
+    let recheckLive = false;
     for (const mutation of mutations) {
       // Detect in-place content updates inside existing scorer elements
       // (e.g., Fantrax filter/sort/page changes that reuse DOM rows)
       if (mutation.target.nodeType === Node.ELEMENT_NODE) {
         const scorer = mutation.target.closest?.("scorer, .scorer");
         if (scorer) scorerRoots.push(scorer);
+
+        // Detect Opp column updates (game status changes)
+        if (!scorer && (mutation.target.closest?.(".i-table__cell--small") || mutation.target.closest?.("._ut__content"))) {
+          recheckLive = true;
+        }
       }
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -1268,40 +1362,12 @@
       }
     }
     if (scorerRoots.length) processTablePlayers(scorerRoots);
+
+    // Re-check live icons when Opp column content changes
+    if (recheckLive) {
+      document.querySelectorAll(".ocf-links--sm .ocf-link--live").forEach(updateLiveIconFromDOM);
+    }
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
-
-  // Periodically re-check for games that went live since last scan
-  setInterval(async () => {
-    const schedule = await fetchTodaySchedule(true);
-    if (!schedule) return;
-
-    document.querySelectorAll(".ocf-link--live").forEach((liveIcon) => {
-      const links = liveIcon.closest(".ocf-links--sm, .ocf-links--lg");
-      if (!links) return;
-      const scorer = links.closest("scorer") || links.closest(".scorer");
-      let teamStr = null;
-      if (scorer) {
-        teamStr = getTeamFromScorer(scorer);
-      } else {
-        const header = links.closest(".player-profile__header");
-        const pEl = header?.querySelector(".player-profile__header__title p");
-        const firstChild = pEl?.firstChild;
-        if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
-          teamStr = firstChild.textContent.trim();
-        }
-      }
-      if (!teamStr) return;
-      const game = schedule.get(teamStr);
-      if (game && game.isLive) {
-        const { url, title } = getLiveGameInfo(game);
-        liveIcon.href = url;
-        liveIcon.title = title;
-        liveIcon.style.display = "";
-      } else {
-        liveIcon.style.display = "none";
-      }
-    });
-  }, LIVE_POLL_INTERVAL);
 })();
