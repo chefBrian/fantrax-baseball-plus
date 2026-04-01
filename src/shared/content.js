@@ -1666,7 +1666,7 @@
       let playerName = cleanPlayerName(nameLink.textContent.trim());
       if (!playerName || playerName.split(/\s+/).length < 2) continue;
       // Resolve abbreviated names (e.g. "C. Emerson" -> "Corbin Emerson")
-      if (/^[A-Z]\./.test(playerName)) {
+      if (/^[A-Z]\. [A-Z]/.test(playerName)) {
         const fullName = abbrNameMap.get(playerName);
         if (!fullName) {
           fetchScorerNames(); // Triggers API call + re-scan on first encounter
