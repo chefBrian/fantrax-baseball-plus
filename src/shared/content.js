@@ -444,6 +444,8 @@
       select.appendChild(option);
     }
     select.value = currentYear;
+    panel.dataset.defaultStatcastYear = currentYear;
+    panel.dataset.statcastYear = currentYear;
 
     function updateBars() {
       const data = yearData[currentYear];
@@ -499,6 +501,8 @@
     select.addEventListener("change", () => {
       currentYear = select.value;
       updateBars();
+      panel.dataset.statcastYear = currentYear;
+      updatePanelFullWidth(panel);
     });
   }
 
@@ -694,6 +698,18 @@
       span.textContent = val != null ? mapping.fmt(val) : "";
       row.appendChild(span);
     });
+  }
+
+  function updatePanelFullWidth(panel) {
+    const year = panel.dataset.statcastYear;
+    const defaultYear = panel.dataset.defaultStatcastYear;
+    const isNonDefaultYear = year && defaultYear && year !== defaultYear;
+    const noFgData = panel.dataset.noFgData === "true";
+    if (isNonDefaultYear || noFgData) {
+      panel.classList.add("ocf-statcast-full-width");
+    } else {
+      panel.classList.remove("ocf-statcast-full-width");
+    }
   }
 
   // --- Rolling xwOBA Chart ---
@@ -1157,6 +1173,11 @@
         }
       } else {
         body.innerHTML = `<div class="ocf-fangraphs-empty">No data available</div>`;
+      }
+      if (injectActuals) {
+        const hasPlayerData = players && !players.error && players[String(mlbId)] != null;
+        panel.dataset.noFgData = hasPlayerData ? "false" : "true";
+        updatePanelFullWidth(panel);
       }
     }
 

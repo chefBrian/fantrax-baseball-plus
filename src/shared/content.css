@@ -267,6 +267,10 @@
   white-space: nowrap;
 }
 
+.ocf-statcast-full-width .ocf-statcast-actual {
+  display: none;
+}
+
 .ocf-statcast-label--nq {
   opacity: 0.3;
 }
