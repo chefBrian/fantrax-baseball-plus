@@ -179,8 +179,8 @@
 }
 
 .ocf-statcast-axis .ocf-statcast-label {
-  width: 72px;
-  min-width: 72px;
+  width: 80px;
+  min-width: 80px;
 }
 
 .ocf-statcast-axis-labels {
@@ -206,7 +206,7 @@
   font-size: 11px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.55);
-  padding: 10px 44px 4px 80px;
+  padding: 10px 44px 4px 88px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   text-align: center;
@@ -221,8 +221,8 @@
 }
 
 .ocf-statcast-label {
-  width: 72px;
-  min-width: 72px;
+  width: 80px;
+  min-width: 80px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.65);
   text-align: right;
@@ -280,6 +280,10 @@
 
 .ocf-statcast-full-width .ocf-statcast-axis::after {
   display: none;
+}
+
+.ocf-statcast-full-width .ocf-statcast-body {
+  padding-right: 18px;
 }
 
 .ocf-statcast-label--nq {
@@ -473,7 +477,7 @@
   white-space: nowrap;
   flex: 1;
   text-align: center;
-  padding-left: 80px;
+  padding-left: 88px;
 }
 
 .ocf-fangraphs-toggle {
