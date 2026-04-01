@@ -286,6 +286,10 @@
   padding-right: 18px;
 }
 
+.ocf-statcast-full-width .ocf-statcast-header {
+  padding-right: 18px;
+}
+
 .ocf-statcast-label--nq {
   opacity: 0.3;
 }
