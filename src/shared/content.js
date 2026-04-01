@@ -419,7 +419,7 @@
           <span class="ocf-statcast-title">MLB Percentile Rankings</span>
           <a class="ocf-statcast-savant-link" href="https://baseballsavant.mlb.com/savant-player/${urlName}-${mlbId}?stats=${savantTab}" target="_blank" rel="noopener noreferrer">
             <mat-icon class="mat-icon material-icons" style="font-size:14px;width:14px;height:14px;">open_in_new</mat-icon>
-            savant
+            sc
           </a>
         </div>
         <div class="ocf-statcast-axis">
@@ -446,6 +446,10 @@
     select.value = currentYear;
     panel.dataset.defaultStatcastYear = currentYear;
     panel.dataset.statcastYear = currentYear;
+    if (!pitcher) {
+      panel.dataset.noFgData = "true";
+      updatePanelFullWidth(panel);
+    }
 
     function updateBars() {
       const data = yearData[currentYear];

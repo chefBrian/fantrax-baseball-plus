@@ -111,7 +111,7 @@
 
 /* Header */
 .ocf-statcast-header {
-  padding: 10px 14px 0;
+  padding: 10px 10px 0;
   position: sticky;
   top: 0;
   background: #1a1d21;
@@ -172,9 +172,15 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.ocf-statcast-axis::after {
+  content: "";
+  width: 36px;
+  min-width: 36px;
+}
+
 .ocf-statcast-axis .ocf-statcast-label {
-  width: 90px;
-  min-width: 90px;
+  width: 72px;
+  min-width: 72px;
 }
 
 .ocf-statcast-axis-labels {
@@ -193,16 +199,17 @@
 
 /* Body */
 .ocf-statcast-body {
-  padding: 0 14px 8px;
+  padding: 0 10px 8px;
 }
 
 .ocf-statcast-section-title {
   font-size: 11px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.55);
-  padding: 10px 0 4px;
+  padding: 10px 44px 4px 80px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  text-align: center;
 }
 
 /* Stat rows */
@@ -214,8 +221,8 @@
 }
 
 .ocf-statcast-label {
-  width: 90px;
-  min-width: 90px;
+  width: 72px;
+  min-width: 72px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.65);
   text-align: right;
@@ -258,8 +265,8 @@
 }
 
 .ocf-statcast-actual {
-  width: 42px;
-  min-width: 42px;
+  width: 36px;
+  min-width: 36px;
   font-size: 11px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.85);
@@ -268,6 +275,10 @@
 }
 
 .ocf-statcast-full-width .ocf-statcast-actual {
+  display: none;
+}
+
+.ocf-statcast-full-width .ocf-statcast-axis::after {
   display: none;
 }
 
@@ -329,11 +340,11 @@
 .ocf-rolling-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.08);
-  margin: 6px 14px 0;
+  margin: 6px 10px 0;
 }
 
 .ocf-rolling-section {
-  padding: 8px 14px 6px;
+  padding: 8px 10px 6px;
 }
 
 .ocf-rolling-header {
@@ -434,11 +445,11 @@
 .ocf-fangraphs-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.08);
-  margin: 6px 14px 0;
+  margin: 6px 10px 0;
 }
 
 .ocf-fangraphs-section {
-  padding: 8px 14px 6px;
+  padding: 8px 10px 6px;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -460,6 +471,9 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
+  flex: 1;
+  text-align: center;
+  padding-left: 80px;
 }
 
 .ocf-fangraphs-toggle {
