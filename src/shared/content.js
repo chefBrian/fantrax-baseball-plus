@@ -827,7 +827,7 @@
 
     // League average line at .310
     const lgY = yPos(0.310);
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.strokeStyle = "rgb(20,184,166)";
     ctx.setLineDash([4, 4]);
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -835,9 +835,12 @@
     ctx.lineTo(padLeft + chartW, lgY);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(255,255,255,0.25)";
-    ctx.textAlign = "left";
-    ctx.fillText("LG AVG", padLeft + 2, lgY - 7);
+    ctx.fillStyle = "rgb(20,184,166)";
+    ctx.textAlign = "right";
+    const tail = data.slice(-Math.max(1, Math.ceil(data.length * 0.1)));
+    const aboveCount = tail.filter((d) => d.xwoba >= 0.310).length;
+    const lgLabelBelow = aboveCount >= tail.length / 2;
+    ctx.fillText("LG AVG", padLeft + chartW, lgY + (lgLabelBelow ? 11 : -7));
 
     // Data line - colored segments
     ctx.lineWidth = 2;
