@@ -1,6 +1,6 @@
 {
   "name": "fantrax-baseball-plus",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Adds Statcast, MLB Video, and live MLB.tv links to Fantrax fantasy baseball players",
   "private": true
 }
