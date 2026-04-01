@@ -473,6 +473,7 @@
           const color = getPercentileColor(pct);
           label.textContent = pct;
           label.style.background = color;
+          label.style.textShadow = pct >= 35 && pct <= 60 ? "0 0 2px rgba(0,0,0,0.9)" : "none";
           if (wasHidden) {
             // Set initial state at 0, defer targets to next frame for transition
             label.style.left = "0%";
@@ -1144,7 +1145,7 @@
           <span class="ocf-statcast-label ocf-statcast-label--qualified">${metric.label}</span>
           <div class="ocf-statcast-track">
             <div class="ocf-statcast-fill" style="width:${barPct}%;background:${color}"></div>
-            <span class="ocf-statcast-pct" style="left:${Math.max(pct, 4)}%;background:${color}">${pct}</span>
+            <span class="ocf-statcast-pct" style="left:${Math.max(pct, 4)}%;background:${color}${pct >= 35 && pct <= 60 ? ";text-shadow:0 0 2px rgba(0,0,0,0.9)" : ""}">${pct}</span>
           </div>
           <span class="ocf-fangraphs-value-right">${displayValue}</span>
         `;
