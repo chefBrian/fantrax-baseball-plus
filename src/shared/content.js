@@ -797,8 +797,10 @@
     const chartW = cssWidth - padLeft - padRight;
     const chartH = cssHeight - padTop - padBottom;
 
-    const yMin = 0.150;
-    const yMax = 0.530;
+    const dataMax = Math.max(...data.map((d) => d.xwoba));
+    const dataMin = Math.min(...data.map((d) => d.xwoba));
+    const yMin = Math.min(0.150, Math.floor(dataMin * 10) / 10);
+    const yMax = Math.max(0.530, Math.ceil(dataMax * 10) / 10 + 0.03);
 
     function xPos(i) { return padLeft + (i / (data.length - 1)) * chartW; }
     function yPos(val) { return padTop + (1 - (val - yMin) / (yMax - yMin)) * chartH; }
@@ -807,7 +809,10 @@
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
     // Gridlines
-    const gridValues = [0.200, 0.300, 0.400, 0.500];
+    const gridValues = [];
+    for (let v = Math.ceil(yMin * 10) / 10; v <= yMax; v = Math.round((v + 0.1) * 10) / 10) {
+      gridValues.push(v);
+    }
     ctx.font = "9px Poppins, sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
@@ -1005,10 +1010,6 @@
     { key: "siera", label: "SIERA", inverted: true },
   ];
 
-  function stuffPlusToPercentile(value) {
-    return Math.max(0, Math.min(100, (value - 50)));
-  }
-
   async function fetchFangraphsSplit(splitKey) {
     const split = FANGRAPHS_SPLITS[splitKey];
     let season = new Date().getFullYear();
@@ -1069,12 +1070,6 @@
     if (playerRank == null) return null;
     const tied = tiedRanks.has(playerRank);
     return { rank: playerRank, total: eligible.length, tied };
-  }
-
-  function formatRank(rankInfo) {
-    if (!rankInfo) return "";
-    const prefix = rankInfo.tied ? "T-" : "#";
-    return `${prefix}${rankInfo.rank} / ${rankInfo.total}`;
   }
 
   function fangraphsExternalUrl(splitKey) {
