@@ -304,10 +304,10 @@
 
   function getPercentileColor(pct) {
     const colors = [
-      "#2166ac", "#2a6fb1", "#3278b5", "#3b81ba", "#4488c4",
-      "#5392c7", "#5e99c9", "#7dacc2", "#93b8bc", "#a8a8a8",
-      "#c49484", "#d47c64", "#d06c5a", "#d06150", "#cc5445",
-      "#c6463a", "#be3630", "#b52026", "#ab1c22", "#a01c20",
+      "#1c4485", "#1f5b9f", "#2a71b2", "#3b88bd", "#4f9cc8",
+      "#66add1", "#81bdd9", "#a0cce1", "#bad5e2", "#cfd8dc",
+      "#dfd1c9", "#eac0aa", "#edab8a", "#e8906b", "#e07551",
+      "#d75c3d", "#cb4330", "#bc2c29", "#b52426", "#ae1c22",
     ];
     return colors[Math.min(19, Math.floor(pct / 5))];
   }
