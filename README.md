@@ -60,7 +60,7 @@ Clicking the video icon opens a modal with:
 <!-- TODO: Add Chrome Web Store link after publishing -->
 
 ### Firefox Add-ons
-<!-- TODO: Add AMO link after publishing -->
+[Install from Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/fantraxbaseball/)
 
 ### Manual / Development
 
