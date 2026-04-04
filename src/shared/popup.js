@@ -4,7 +4,9 @@ const FEATURES = ["bbref", "statcastIcon", "statcastPanel", "video", "liveGame",
 const DEFAULTS = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true };
 
 async function init() {
-  document.getElementById("version").textContent = "v" + browser.runtime.getManifest().version;
+  const versionEl = document.getElementById("version");
+  versionEl.textContent = "v" + browser.runtime.getManifest().version;
+  versionEl.href = "https://github.com/chefBrian/fantrax-baseball-plus/releases";
   const stored = await browser.storage.sync.get(DEFAULTS);
   for (const key of FEATURES) {
     const el = document.getElementById(key);

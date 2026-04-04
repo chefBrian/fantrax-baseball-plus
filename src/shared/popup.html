@@ -22,7 +22,8 @@
     }
     .header img { width: 24px; height: 24px; }
     .header span { font-weight: 600; font-size: 14px; }
-    .version { font-weight: 400; font-size: 10px; color: rgba(255, 255, 255, 0.35); transform: scale(0.85); transform-origin: right center; margin-left: auto; }
+    .version { font-weight: 400; font-size: 12px; color: rgba(255, 255, 255, 0.35); margin-left: auto; text-decoration: none; }
+    .version:hover { color: rgba(255, 255, 255, 0.6); }
     .toggle-row {
       display: flex;
       align-items: center;
@@ -70,13 +71,41 @@
     input:checked + .slider::before {
       transform: translateX(16px);
     }
+    .footer {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+    .footer a {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 11px;
+      text-decoration: none;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      padding: 5px 14px;
+    }
+    .footer a:hover {
+      color: rgba(255, 255, 255, 0.7);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    .footer svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <img src="icons/icon-48.png" alt="">
     <span>FantraxBaseball+</span>
-    <span class="version" id="version"></span>
+    <a class="version" id="version" target="_blank"></a>
   </div>
 
   <div class="toggle-row">
@@ -143,6 +172,17 @@
       <input type="checkbox" id="fangraphsPanel" checked>
       <span class="slider"></span>
     </label>
+  </div>
+
+  <div class="footer">
+    <a href="https://github.com/chefBrian/fantrax-baseball-plus" target="_blank">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+    <a href="https://github.com/chefBrian/fantrax-baseball-plus/issues" target="_blank">
+      <svg viewBox="0 0 16 16"><path d="M4.72 3.22a.75.75 0 0 1 1.06 1.06L4.28 5.78c.4.28.74.63 1 1.03h5.44c.26-.4.6-.75 1-1.03L10.22 4.28a.75.75 0 0 1 1.06-1.06l2 2a.75.75 0 0 1-1.06 1.06l-.58-.58c-.2.2-.37.42-.5.67H11v2h1.25a.75.75 0 0 1 0 1.5H11v1.5c0 .36-.05.71-.14 1.04l1.36 1.36a.75.75 0 0 1-1.06 1.06l-1.03-1.03A3.73 3.73 0 0 1 8 14.25a3.73 3.73 0 0 1-2.13-.65L4.84 14.63a.75.75 0 0 1-1.06-1.06l1.36-1.36A3.7 3.7 0 0 1 5 11.17v-1.5H3.75a.75.75 0 0 1 0-1.5H5v-2h-.86c-.13-.25-.3-.47-.5-.67l-.58.58a.75.75 0 0 1-1.06-1.06zM6.5 8.17v3c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-3z"/></svg>
+      Report a Bug
+    </a>
   </div>
 
   <script src="popup.js"></script>
