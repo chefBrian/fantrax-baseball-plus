@@ -10,6 +10,50 @@
   const features = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true };
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
+
+  // Map Fantrax team abbreviations to MLB API full names (for disambiguating
+  // shared-name players like Max Muncy). ATH = Athletics (Sacramento, post-2025
+  // rebrand); OAK is a legacy fallback in case Fantrax hasn't updated.
+  const TEAM_ABBR_TO_NAME = {
+    ARI: "Arizona Diamondbacks",
+    ATL: "Atlanta Braves",
+    BAL: "Baltimore Orioles",
+    BOS: "Boston Red Sox",
+    CHC: "Chicago Cubs",
+    CHW: "Chicago White Sox",
+    CIN: "Cincinnati Reds",
+    CLE: "Cleveland Guardians",
+    COL: "Colorado Rockies",
+    DET: "Detroit Tigers",
+    HOU: "Houston Astros",
+    KC:  "Kansas City Royals",
+    LAA: "Los Angeles Angels",
+    LAD: "Los Angeles Dodgers",
+    MIA: "Miami Marlins",
+    MIL: "Milwaukee Brewers",
+    MIN: "Minnesota Twins",
+    NYM: "New York Mets",
+    NYY: "New York Yankees",
+    ATH: "Athletics",
+    OAK: "Athletics",
+    PHI: "Philadelphia Phillies",
+    PIT: "Pittsburgh Pirates",
+    SD:  "San Diego Padres",
+    SEA: "Seattle Mariners",
+    SF:  "San Francisco Giants",
+    STL: "St. Louis Cardinals",
+    TB:  "Tampa Bay Rays",
+    TEX: "Texas Rangers",
+    TOR: "Toronto Blue Jays",
+    WSH: "Washington Nationals",
+  };
+  const TEAM_FULL_NAMES = new Set(Object.values(TEAM_ABBR_TO_NAME));
+
+  function normalizeTeam(teamHint) {
+    if (!teamHint) return null;
+    if (TEAM_FULL_NAMES.has(teamHint)) return teamHint;
+    return TEAM_ABBR_TO_NAME[teamHint.toUpperCase()] || null;
+  }
   let scheduleData = null;
   let schedulePromise = null;
 
@@ -75,23 +119,38 @@
     return name.replace(/-(P|H|DH)$/i, "").trim();
   }
 
-  async function lookupMlbId(playerName) {
-    if (mlbIdCache.has(playerName)) {
-      return mlbIdCache.get(playerName);
+  async function lookupMlbId(playerName, teamHint) {
+    const normalizedTeam = normalizeTeam(teamHint);
+    const cacheKey = `${playerName}|${normalizedTeam || ""}`;
+    if (mlbIdCache.has(cacheKey)) {
+      return mlbIdCache.get(cacheKey);
     }
     // Strip periods (e.g. "T.J." -> "TJ") since the MLB API doesn't match them
     const searchName = playerName.replace(/\./g, "");
     try {
       const resp = await fetch(
-        `${MLB_SEARCH_API}${encodeURIComponent(searchName)}`
+        `${MLB_SEARCH_API}${encodeURIComponent(searchName)}&hydrate=currentTeam`
       );
       if (!resp.ok) return null;
       const data = await resp.json();
-      if (data.people && data.people.length > 0) {
-        const id = data.people[0].id;
-        mlbIdCache.set(playerName, id);
-        return id;
+      const people = data.people || [];
+      if (people.length === 0) return null;
+
+      let match = people[0];
+      if (people.length > 1 && normalizedTeam) {
+        const teamMatch = people.find(
+          (p) => p.currentTeam?.name === normalizedTeam
+        );
+        if (teamMatch) {
+          match = teamMatch;
+        } else {
+          console.warn(
+            `[OCF] Ambiguous name "${playerName}" with team "${normalizedTeam}" did not match any of: ${people.map((p) => p.currentTeam?.name).join(", ")}`
+          );
+        }
       }
+      mlbIdCache.set(cacheKey, match.id);
+      return match.id;
     } catch (e) {
       console.warn("[OCF] MLB ID lookup failed for", playerName, e);
     }
@@ -605,7 +664,7 @@
     return panel;
   }
 
-  async function populateStatcastFromModal(panel, playerName, positionText) {
+  async function populateStatcastFromModal(panel, playerName, positionText, teamHint) {
     const requestId = ++statcastPanelRequestId;
     const pitcher = isPitcher(positionText);
 
@@ -639,7 +698,7 @@
       panel.appendChild(shimmerSection);
     }
 
-    const mlbId = await lookupMlbId(playerName);
+    const mlbId = await lookupMlbId(playerName, teamHint);
     if (!mlbId || requestId !== statcastPanelRequestId) return;
     if (!document.contains(panel)) return;
 
@@ -1591,14 +1650,14 @@
     loadMore(true);
   }
 
-  async function handleLinkClick(e, type, playerName, positionText) {
+  async function handleLinkClick(e, type, playerName, positionText, teamHint) {
     e.preventDefault();
     e.stopPropagation();
 
     const btn = e.currentTarget;
     btn.classList.add("ocf-link--loading");
 
-    const mlbId = await lookupMlbId(playerName);
+    const mlbId = await lookupMlbId(playerName, teamHint);
     const urlName = makeUrlName(playerName);
 
     btn.classList.remove("ocf-link--loading");
@@ -1626,11 +1685,12 @@
     }
   }
 
-  function buildLinks(playerName, positionText, size) {
+  function buildLinks(playerName, positionText, teamHint, size) {
     const container = document.createElement("span");
     container.className = size === "lg" ? "ocf-links--lg" : "ocf-links--sm";
     container.dataset.ocfPlayer = playerName;
     container.dataset.ocfPos = positionText || "";
+    container.dataset.ocfTeam = teamHint || "";
 
     const links = [
       { type: "bbref", icon: "sports_baseball", title: "Baseball Reference", feature: "bbref" },
@@ -1649,7 +1709,13 @@
       i.textContent = icon;
       a.appendChild(i);
       a.addEventListener("click", (e) =>
-        handleLinkClick(e, type, container.dataset.ocfPlayer, container.dataset.ocfPos)
+        handleLinkClick(
+          e,
+          type,
+          container.dataset.ocfPlayer,
+          container.dataset.ocfPos,
+          container.dataset.ocfTeam || null
+        )
       );
       container.appendChild(a);
     }
@@ -1657,9 +1723,10 @@
     return container;
   }
 
-  function updateLinks(container, playerName, positionText) {
+  function updateLinks(container, playerName, positionText, teamHint) {
     container.dataset.ocfPlayer = playerName;
     container.dataset.ocfPos = positionText || "";
+    container.dataset.ocfTeam = teamHint || "";
   }
 
   // --- Table row players (roster, matchup, players pages) ---
@@ -1716,7 +1783,7 @@
       const existing = scorerInfo.querySelector(".ocf-links--sm");
       if (existing) {
         if (existing.dataset.ocfPlayer === playerName) continue;
-        updateLinks(existing, playerName, positionText);
+        updateLinks(existing, playerName, positionText, teamAbbr);
         // Update live icon
         const liveIcon = existing.querySelector(".ocf-link--live");
         if (liveIcon) {
@@ -1731,7 +1798,7 @@
         continue;
       }
 
-      const links = buildLinks(playerName, positionText, "sm");
+      const links = buildLinks(playerName, positionText, teamAbbr, "sm");
       if (features.liveGame) {
         const liveIcon = createLiveIcon(links);
         const live = isLiveFromDOM(scorerEl);
@@ -1793,7 +1860,7 @@
         }
       }
 
-      const links = buildLinks(playerName, positionText, "lg");
+      const links = buildLinks(playerName, positionText, teamName, "lg");
 
       // Insert right after the player name in h1
       nameLink.after(links);
@@ -1807,12 +1874,12 @@
       if (features.statcastPanel) {
         const existingPanel = document.querySelector(".ocf-statcast-panel");
         if (existingPanel) {
-          populateStatcastFromModal(existingPanel, playerName, positionText);
+          populateStatcastFromModal(existingPanel, playerName, positionText, teamName);
         } else {
           const overlayPane = header.closest(".cdk-overlay-pane");
           if (overlayPane) {
             const panel = showStatcastSkeleton(overlayPane);
-            populateStatcastFromModal(panel, playerName, positionText);
+            populateStatcastFromModal(panel, playerName, positionText, teamName);
           }
         }
       }
