@@ -1,4 +1,5 @@
 <h1>
+  <img align="right" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" width="400" height="12" alt="">
   FantraxBaseball+
   <a href="https://addons.mozilla.org/en-US/firefox/addon/fantraxbaseball/"><img align="right" src="https://img.shields.io/amo/v/fantraxbaseball?label=Firefox%20Add-ons&logo=firefoxbrowser&logoColor=white&color=FF7139" alt="Firefox Add-ons"></a>
   <a href="https://chromewebstore.google.com/detail/fantraxbaseball+/andhmhfiodkbfmjiencoiglmdpolhomc"><img align="right" src="https://img.shields.io/chrome-web-store/v/andhmhfiodkbfmjiencoiglmdpolhomc?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white&color=4285F4" alt="Chrome Web Store" hspace="8"></a>
