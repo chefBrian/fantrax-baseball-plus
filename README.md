@@ -1,8 +1,11 @@
-<h1>
-  FantraxBaseball+
-  <a href="https://chromewebstore.google.com/detail/fantraxbaseball+/andhmhfiodkbfmjiencoiglmdpolhomc"><img align="right" src="https://img.shields.io/chrome-web-store/v/andhmhfiodkbfmjiencoiglmdpolhomc?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white&color=4285F4" alt="Chrome Web Store" hspace="8" vspace="24"></a>
-  <a href="https://addons.mozilla.org/en-US/firefox/addon/fantraxbaseball/"><img align="right" src="https://img.shields.io/amo/v/fantraxbaseball?label=Firefox%20Add-ons&logo=firefoxbrowser&logoColor=white&color=FF7139" alt="Firefox Add-ons" vspace="24"></a>
-</h1>
+<table width="100%"><tr>
+<td valign="middle"><h1>FantraxBaseball+</h1></td>
+<td valign="middle" align="right">
+  <a href="https://chromewebstore.google.com/detail/fantraxbaseball+/andhmhfiodkbfmjiencoiglmdpolhomc"><img src="https://img.shields.io/chrome-web-store/v/andhmhfiodkbfmjiencoiglmdpolhomc?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white&color=4285F4" alt="Chrome Web Store"></a>
+  &nbsp;
+  <a href="https://addons.mozilla.org/en-US/firefox/addon/fantraxbaseball/"><img src="https://img.shields.io/amo/v/fantraxbaseball?label=Firefox%20Add-ons&logo=firefoxbrowser&logoColor=white&color=FF7139" alt="Firefox Add-ons"></a>
+</td>
+</tr></table>
 
 Browser extension that enhances Fantrax fantasy baseball with Statcast and FanGraphs data, quick-access links, and live game integration. Available for Chrome and Firefox.
 
