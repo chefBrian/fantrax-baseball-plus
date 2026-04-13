@@ -57,10 +57,10 @@ Clicking the video icon opens a modal with:
 ## Install
 
 ### Chrome Web Store
-[![Available in the Chrome Web Store](https://developer.chrome.com/static/docs/webstore/branding/image/YT2Grfi9vEBa2wAPzhWa.png)](https://chromewebstore.google.com/detail/fantraxbaseball+/andhmhfiodkbfmjiencoiglmdpolhomc)
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/andhmhfiodkbfmjiencoiglmdpolhomc?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white&color=4285F4)](https://chromewebstore.google.com/detail/fantraxbaseball+/andhmhfiodkbfmjiencoiglmdpolhomc)
 
 ### Firefox Add-ons
-[![Get the Add-on for Firefox](https://blog.mozilla.org/addons/files/2015/11/get-the-addon.png)](https://addons.mozilla.org/en-US/firefox/addon/fantraxbaseball/)
+[![Firefox Add-ons](https://img.shields.io/amo/v/fantraxbaseball?label=Firefox%20Add-ons&logo=firefoxbrowser&logoColor=white&color=FF7139)](https://addons.mozilla.org/en-US/firefox/addon/fantraxbaseball/)
 
 ### Manual / Development
 
