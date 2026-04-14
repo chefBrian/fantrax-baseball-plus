@@ -31,7 +31,7 @@ Pulsing live icon links to the stream when a player's game is in progress.
 ### Settings Panel
 Toggle individual features on/off and choose Auto/Light/Dark theme from the toolbar popup.
 
-![Settings Panel](screenshots/SettingsPanel.png?v=2)
+![Settings Panel](screenshots/SettingsPanel.png)
 
 ## Features
 
