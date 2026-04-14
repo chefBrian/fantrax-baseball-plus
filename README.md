@@ -29,7 +29,7 @@ Pulsing live icon links to the stream when a player's game is in progress.
 ![Live Matchup](screenshots/LiveMatchup.png)
 
 ### Settings Panel
-Toggle individual features on/off from the toolbar popup.
+Toggle individual features on/off and choose Auto/Light/Dark theme from the toolbar popup.
 
 ![Settings Panel](screenshots/SettingsPanel.png)
 
@@ -41,6 +41,7 @@ Toggle individual features on/off from the toolbar popup.
 - **FanGraphs** - pitcher cards show Stuff+, Location+, Pitching+, xFIP, and SIERA with percentile-style bars
 - **MLB Video** - inline video modal with filtered highlights
 - **Live Game** - red pulsing icon links directly to the live stream when a player's game is in progress. Exclusive broadcasts (Peacock, Apple TV+, ESPN, Netflix, TBS) link to the correct streaming platform instead of MLB.tv
+- **Light & Dark Mode** - injected panels and modals match Fantrax's theme automatically, with an Auto/Light/Dark override in the settings popup
 
 Links and stats appear in two places:
 - **Player modals** - larger icons next to the player name, with Statcast/FanGraphs panels and rolling xwOBA chart below
