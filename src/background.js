@@ -1,5 +1,61 @@
 const browser = globalThis.browser || globalThis.chrome;
 
+const REQUIRED_ORIGINS = [
+  "*://*.fantrax.com/*",
+  "https://fastball-gateway.mlb.com/*",
+  "https://statsapi.mlb.com/*",
+  "https://fastball-clips.mlb.com/*",
+  "https://baseballsavant.mlb.com/*",
+  "https://www.fangraphs.com/*",
+];
+
+async function refreshActionBadge() {
+  try {
+    const granted = await browser.permissions.contains({ origins: REQUIRED_ORIGINS });
+    const text = granted ? "" : "!";
+    if (browser.action?.setBadgeText) {
+      await browser.action.setBadgeText({ text });
+    }
+    if (!granted && browser.action?.setBadgeBackgroundColor) {
+      await browser.action.setBadgeBackgroundColor({ color: "#e53935" });
+    }
+  } catch (e) {
+    // best-effort; ignore
+  }
+}
+
+browser.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === "install") {
+    let granted = false;
+    try {
+      granted = await browser.permissions.contains({ origins: REQUIRED_ORIGINS });
+    } catch {}
+    if (!granted) {
+      browser.tabs.create({ url: browser.runtime.getURL("setup.html") });
+    }
+  }
+  refreshActionBadge();
+});
+
+async function reloadFantraxTabs() {
+  try {
+    const tabs = await browser.tabs.query({ url: "*://*.fantrax.com/*" });
+    for (const tab of tabs) {
+      browser.tabs.reload(tab.id);
+    }
+  } catch (e) {
+    // best-effort
+  }
+}
+
+browser.runtime.onStartup?.addListener(refreshActionBadge);
+browser.permissions.onAdded?.addListener(() => {
+  refreshActionBadge();
+  reloadFantraxTabs();
+});
+browser.permissions.onRemoved?.addListener(refreshActionBadge);
+refreshActionBadge();
+
 // Firefox: rewrite Origin/Referer on FanGraphs requests to avoid Cloudflare challenge
 // (Chrome handles this via declarativeNetRequest rules.json)
 if (typeof browser.webRequest !== "undefined") {
@@ -18,6 +74,20 @@ if (typeof browser.webRequest !== "undefined") {
 }
 
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "ocf-open-setup") {
+    browser.tabs.create({ url: browser.runtime.getURL("setup.html") });
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === "ocf-check-perms") {
+    browser.permissions
+      .contains({ origins: msg.origins })
+      .then((granted) => sendResponse({ ok: true, granted }))
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
+
   if (msg.type === "ocf-fetch-videos") {
     fetch("https://fastball-gateway.mlb.com/graphql", {
       method: "POST",

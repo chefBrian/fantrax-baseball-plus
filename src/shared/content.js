@@ -2082,4 +2082,58 @@
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
+
+  // --- Permission banner (Firefox MV3 user-controlled host_permissions) ---
+
+  const REQUIRED_ORIGINS = [
+    "*://*.fantrax.com/*",
+    "https://fastball-gateway.mlb.com/*",
+    "https://statsapi.mlb.com/*",
+    "https://fastball-clips.mlb.com/*",
+    "https://baseballsavant.mlb.com/*",
+    "https://www.fangraphs.com/*",
+  ];
+  const PERM_BANNER_DISMISS_KEY = "ocfPermBannerDismissed";
+
+  async function maybeShowPermBanner() {
+    let response;
+    try {
+      response = await browser.runtime.sendMessage({
+        type: "ocf-check-perms",
+        origins: REQUIRED_ORIGINS,
+      });
+    } catch {
+      return;
+    }
+    if (!response?.ok || response.granted) return;
+
+    if (document.querySelector(".ocf-perm-banner")) return;
+
+    const banner = document.createElement("div");
+    banner.className = "ocf-perm-banner";
+    banner.innerHTML = `
+      <span class="ocf-perm-banner__msg">
+        <strong>FantraxBaseball+</strong> needs site access to load player video, Statcast, and live game links.
+      </span>
+      <button class="ocf-perm-banner__btn" type="button">Grant access</button>
+      <button class="ocf-perm-banner__close" type="button" aria-label="Dismiss">×</button>
+    `;
+    document.body.appendChild(banner);
+
+    banner.querySelector(".ocf-perm-banner__btn").addEventListener("click", () => {
+      browser.runtime.sendMessage({ type: "ocf-open-setup" });
+    });
+    banner.querySelector(".ocf-perm-banner__close").addEventListener("click", () => {
+      banner.remove();
+      try { sessionStorage.setItem(PERM_BANNER_DISMISS_KEY, "1"); } catch {}
+    });
+  }
+
+  try {
+    if (sessionStorage.getItem(PERM_BANNER_DISMISS_KEY) !== "1") {
+      maybeShowPermBanner();
+    }
+  } catch {
+    maybeShowPermBanner();
+  }
 })();

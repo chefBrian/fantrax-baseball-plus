@@ -3,6 +3,29 @@ const browser = globalThis.browser || globalThis.chrome;
 const FEATURES = ["bbref", "statcastIcon", "statcastPanel", "video", "liveGame", "fangraphsPanel"];
 const DEFAULTS = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true, themeOverride: "auto" };
 
+const REQUIRED_ORIGINS = [
+  "*://*.fantrax.com/*",
+  "https://fastball-gateway.mlb.com/*",
+  "https://statsapi.mlb.com/*",
+  "https://fastball-clips.mlb.com/*",
+  "https://baseballsavant.mlb.com/*",
+  "https://www.fangraphs.com/*",
+];
+
+async function refreshPermissionBanner() {
+  const banner = document.getElementById("permBanner");
+  if (!browser.permissions?.contains) {
+    banner.classList.remove("visible");
+    return;
+  }
+  try {
+    const granted = await browser.permissions.contains({ origins: REQUIRED_ORIGINS });
+    banner.classList.toggle("visible", !granted);
+  } catch {
+    banner.classList.remove("visible");
+  }
+}
+
 async function init() {
   const versionEl = document.getElementById("version");
   versionEl.textContent = "v" + browser.runtime.getManifest().version;
@@ -24,6 +47,16 @@ async function init() {
     applyPopupTheme(btn.dataset.theme);
     browser.storage.sync.set({ themeOverride: btn.dataset.theme });
   });
+
+  document.getElementById("permBtn").addEventListener("click", async () => {
+    try {
+      await browser.permissions.request({ origins: REQUIRED_ORIGINS });
+    } catch (e) {
+      console.warn("[OCF] Permission request failed:", e);
+    }
+    refreshPermissionBanner();
+  });
+  refreshPermissionBanner();
 }
 
 function applyThemeSeg(seg, theme) {

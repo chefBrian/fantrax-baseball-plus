@@ -178,6 +178,39 @@
       height: 14px;
       fill: currentColor;
     }
+    .perm-banner {
+      display: none;
+      background: rgba(229, 57, 53, 0.12);
+      border: 1px solid rgba(229, 57, 53, 0.35);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .perm-banner.visible { display: block; }
+    .perm-banner__title {
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+    .perm-banner__btn {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 0;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .perm-banner__btn:hover { filter: brightness(1.1); }
   </style>
 </head>
 <body>
@@ -185,6 +218,12 @@
     <img src="icons/icon-48.png" alt="">
     <span>FantraxBaseball+</span>
     <a class="version" id="version" target="_blank"></a>
+  </div>
+
+  <div class="perm-banner" id="permBanner">
+    <div class="perm-banner__title">Site access required</div>
+    <div>Grant permission for Fantrax and the data sources this extension uses (MLB, Baseball Savant, FanGraphs).</div>
+    <button class="perm-banner__btn" id="permBtn" type="button">Grant access</button>
   </div>
 
   <div class="section-label">Appearance</div>

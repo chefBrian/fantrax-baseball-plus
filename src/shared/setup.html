@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>FantraxBaseball+ Setup</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #1a1d21;
+      --card: #22262b;
+      --text: #fff;
+      --text-muted: rgba(255, 255, 255, 0.85);
+      --text-dim: rgba(255, 255, 255, 0.55);
+      --text-faint: rgba(255, 255, 255, 0.35);
+      --border: rgba(255, 255, 255, 0.08);
+      --accent: rgb(20, 184, 166);
+      --success: rgb(34, 197, 94);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f7f9;
+        --card: #ffffff;
+        --text: hsl(212 11% 18%);
+        --text-muted: hsl(212 12% 27%);
+        --text-dim: hsl(214 15% 47%);
+        --text-faint: hsl(214 12% 60%);
+        --border: hsl(0 0% 0% / 0.08);
+        --accent: hsl(173.4 82% 39%);
+        --success: hsl(142 71% 45%);
+      }
+    }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .header img { width: 40px; height: 40px; }
+    .header h1 { font-size: 20px; font-weight: 600; }
+    .lead {
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+    .hosts {
+      list-style: none;
+      background: rgba(0, 0, 0, 0.15);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+    }
+    @media (prefers-color-scheme: light) {
+      .hosts { background: hsl(214 16% 96%); }
+    }
+    .hosts li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+    .hosts li + li { border-top: 1px solid var(--border); }
+    .hosts code {
+      color: var(--text-dim);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    button {
+      display: block;
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 0;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.15s;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: 0.6; cursor: default; }
+    .status {
+      margin-top: 16px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-dim);
+      min-height: 20px;
+    }
+    .status.success { color: var(--success); font-weight: 500; }
+    .footnote {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-faint);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <img src="icons/icon-48.png" alt="">
+      <h1>Welcome to FantraxBaseball+</h1>
+    </div>
+    <p class="lead">
+      To enhance Fantrax with player video, Statcast data, and live game links,
+      this extension needs access to a few sites. Click below to grant all
+      required permissions in one step.
+    </p>
+    <ul class="hosts">
+      <li><span>Fantrax</span><code>www.fantrax.com</code></li>
+      <li><span>MLB Film Room</span><code>fastball-gateway.mlb.com</code></li>
+      <li><span>MLB Stats</span><code>statsapi.mlb.com</code></li>
+      <li><span>MLB Video clips</span><code>fastball-clips.mlb.com</code></li>
+      <li><span>Baseball Savant</span><code>baseballsavant.mlb.com</code></li>
+      <li><span>FanGraphs</span><code>www.fangraphs.com</code></li>
+    </ul>
+    <button id="grantBtn" type="button">Grant access</button>
+    <div class="status" id="status"></div>
+    <div class="footnote">
+      You can change these permissions anytime in your browser's extension settings.
+    </div>
+  </div>
+  <script src="setup.js"></script>
+</body>
+</html>
