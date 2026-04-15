@@ -1339,18 +1339,29 @@
     }
   }`;
 
+  // Each filter pairs a Film Room (gateway) query with a MiLB tag. Page 1 of
+  // each filter merges results from both sources so MiLB-only clips appear
+  // alongside Film Room clips. milbTag=null means don't query MiLB for this
+  // filter; milbTag="" means query MiLB by player only (no extra tag filter).
   const HITTER_FILTERS = {
     "all-bip": {
       label: "All BIP",
-      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Hit","Out","Error"] AND HitDistance = {{ 5, 790 }} Order By Timestamp DESC',
+      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Hit","Out","Error","Home Run"] Order By Timestamp DESC',
+      milbTag: "",
     },
     "hits": {
       label: "Hits",
-      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Hit"] AND HitDistance = {{ 5, 790 }} Order By Timestamp DESC',
+      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Hit","Home Run"] Order By Timestamp DESC',
+      milbTag: "",
+      milbTitleFilter: "hits",
     },
     "hr": {
       label: "Home Runs",
-      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Home Run"] AND HitDistance = {{ 5, 790 }} Order By Timestamp DESC',
+      query: (id) => 'BatterId = [' + id + '] AND HitResult = ["Home Run"] Order By Timestamp DESC',
+      milbTag: "home-run",
+      // Some MiLB HR clips lack the home-run tag, so also scan the player's
+      // recent clips and pick any with HR titles.
+      milbTitleRescue: "hr",
     },
   };
 
@@ -1359,14 +1370,17 @@
       label: "All Highlights",
       queryType: "FREETEXT",
       query: (_id, playerName) => playerName,
+      milbTag: "",
     },
     "strikeouts": {
       label: "Strikeouts",
       query: (id) => 'PitcherId = [' + id + '] AND HitResult = ["Strikeout"] Order By Timestamp DESC',
+      milbTag: null,
     },
     "hr-against": {
       label: "HRs Against",
       query: (id) => 'PitcherId = [' + id + '] AND HitResult = ["Home Run"] Order By Timestamp DESC',
+      milbTag: "home-run",
     },
   };
 
@@ -1397,21 +1411,78 @@
     return result.data.data.search;
   }
 
-  async function fetchVideos(playerName, page = 1, { mlbId, positionText, filter } = {}) {
-    if (!mlbId) return { videos: [], total: 0 };
+  // Strikeouts come back under HitResult="Out" in structured queries, so filter
+  // them out by title. Used for hitter "all-bip" / "hits" filters where we
+  // intentionally don't constrain by HitDistance (MiLB clips often lack it).
+  const STRIKEOUT_TITLE_RE = /\b(?:strikes? out|out on strikes|strikeout|K['']?s)\b/i;
 
+  function isStrikeoutTitle(title) {
+    return !!title && STRIKEOUT_TITLE_RE.test(title);
+  }
+
+  const MILB_PAGE_SIZE = 25;
+  // Match titles for hits-only (singles, doubles, triples, home runs - excludes
+  // outs, walks, defense). The MiLB API has no equivalent of HitResult, so we
+  // post-filter when the user picks "Hits".
+  const HIT_TITLE_RE = /\b(?:singles?|doubles?|triples?|homers?|home run|RBI|hits? a)\b/i;
+  const HR_TITLE_RE = /\b(?:homers?|home run|two-run homer|three-run homer|grand slam)\b/i;
+
+  async function fetchMilbPage(mlbId, { tag = "", page = 1 } = {}) {
+    const tagSlug = tag
+      ? `playerid-${encodeURIComponent(mlbId)},${encodeURIComponent(tag)}`
+      : `playerid-${encodeURIComponent(mlbId)}`;
+    const skip = (page - 1) * MILB_PAGE_SIZE;
+    const url =
+      "https://dapi-milb.mlbinfra.com/v2/content/en-us/videos" +
+      `?tags.slug=${tagSlug}&%24skip=${skip}&%24limit=${MILB_PAGE_SIZE}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`MiLB API ${resp.status}`);
+    const data = await resp.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    const videos = items.map((item) => {
+      const fields = item.fields || {};
+      const scenarios = Array.isArray(fields.playbackScenarios) ? fields.playbackScenarios : [];
+      const mp4 = scenarios.find((s) => s.playback === "mp4Avc")
+        || scenarios.find((s) => s.location?.endsWith?.(".mp4"));
+      const videoUrl = mp4?.location || fields.url;
+      if (!videoUrl) return null;
+      const thumb = item.thumbnail || {};
+      const thumbUrl = thumb.thumbnailUrl
+        || (thumb.templateUrl && thumb.templateUrl.replace("{formatInstructions}", "w_372,h_209,c_fill,q_auto,f_jpg"))
+        || null;
+      return {
+        id: item._entityId || item.slug,
+        title: item.title || fields.description || "Untitled",
+        date: (item.contentDate || "").slice(0, 10),
+        duration: fields.duration || "",
+        videoUrl,
+        thumbUrl,
+      };
+    }).filter(Boolean);
+
+    const maxItems = data.pagination?.maxItems;
+    const exhausted = items.length === 0
+      || items.length < MILB_PAGE_SIZE
+      || (typeof maxItems === "number" && skip + items.length >= maxItems);
+
+    return { videos, exhausted };
+  }
+
+  async function fetchGatewayPage(playerName, { mlbId, filter, positionText, page = 1 } = {}) {
     const filters = getFilters(positionText);
     const activeFilter = filters[filter];
     const query = activeFilter.query(mlbId, playerName);
     const search = await doVideoFetch(query, page - 1, activeFilter.queryType);
+    const dropStrikeouts = filter === "all-bip" || filter === "hits";
+    const rawCount = (search.plays || []).length;
 
     const videos = (search.plays || []).map((play) => {
       const mp = play.mediaPlayback?.[0];
       if (!mp) return null;
+      if (dropStrikeouts && isStrikeoutTitle(mp.title)) return null;
 
       const feeds = mp.feeds || [];
-
-      // Find a playable mp4 URL across all feeds, preferring mp4Avc
       let videoUrl = null;
       let bestFeed = null;
       for (const feed of feeds) {
@@ -1425,7 +1496,6 @@
           break;
         }
       }
-
       if (!videoUrl) {
         for (const feed of feeds) {
           if (feed.playbacks?.[0]?.url) {
@@ -1435,7 +1505,6 @@
           }
         }
       }
-
       if (!videoUrl) return null;
 
       const thumbFeed = bestFeed || feeds[0];
@@ -1453,7 +1522,34 @@
       };
     }).filter(Boolean);
 
-    return { videos, total: search.total || 0 };
+    return { videos, exhausted: rawCount < VIDEOS_PER_PAGE };
+  }
+
+  // Fetch one MiLB page with optional title-rescue (HR clips missing tag).
+  async function fetchMilbPageForFilter(mlbId, activeFilter, page) {
+    const tag = activeFilter.milbTag;
+    const main = await fetchMilbPage(mlbId, { tag, page });
+    let videos = main.videos;
+    let exhausted = main.exhausted;
+
+    if (activeFilter.milbTitleRescue === "hr" && tag) {
+      // Also pull untagged page N and pick HR titles. Cheap because limit=25.
+      try {
+        const rescue = await fetchMilbPage(mlbId, { page });
+        const rescued = rescue.videos.filter((v) => HR_TITLE_RE.test(v.title));
+        const seen = new Set(videos.map((v) => v.id));
+        videos = videos.concat(rescued.filter((v) => !seen.has(v.id)));
+        exhausted = exhausted && rescue.exhausted;
+      } catch {}
+    }
+
+    if (activeFilter.milbTitleFilter === "hits") {
+      videos = videos.filter((v) => HIT_TITLE_RE.test(v.title) && !isStrikeoutTitle(v.title));
+    } else if (activeFilter === HITTER_FILTERS["all-bip"]) {
+      videos = videos.filter((v) => !isStrikeoutTitle(v.title));
+    }
+
+    return { videos, exhausted };
   }
 
   // --- Video Modal ---
@@ -1616,15 +1712,63 @@
       }
     });
 
-    let currentPage = 0;
-    let loading = false;
-    let exhausted = false;
     let activeFilter = getDefaultFilter(positionText);
+    let loading = false;
+    let seenIds = new Set();
+    let seenKeys = new Set();
+    // Same play from different sources gets different ids. Title+date matches
+    // are treated as duplicates so MLB and MiLB feeds of the same clip don't
+    // both render.
+    function dupKey(v) {
+      return ((v.title || "").trim().toLowerCase()) + "|" + (v.date || "");
+    }
+    // Per-source pagination cursors. buffer holds items already fetched but
+    // not yet drained into the rendered list. exhausted = no more pages from
+    // that source. The merger picks the buffer head with the newer date.
+    let cursors = newCursors();
+
+    function newCursors() {
+      const filters = getFilters(positionText);
+      const wantMilb = filters[activeFilter]?.milbTag !== undefined
+        && filters[activeFilter]?.milbTag !== null;
+      return {
+        gateway: { page: 0, exhausted: false, buffer: [] },
+        milb: wantMilb
+          ? { page: 0, exhausted: false, buffer: [] }
+          : { page: 0, exhausted: true, buffer: [] },
+      };
+    }
 
     const list = overlay.querySelector(".ocf-video-modal__list");
 
+    async function ensureBuffer(source) {
+      const cur = cursors[source];
+      if (cur.buffer.length > 0 || cur.exhausted) return;
+      const filters = getFilters(positionText);
+      const activeFilterDef = filters[activeFilter];
+      const next = cur.page + 1;
+      try {
+        const result = source === "gateway"
+          ? await fetchGatewayPage(playerName, { mlbId, filter: activeFilter, positionText, page: next })
+          : await fetchMilbPageForFilter(mlbId, activeFilterDef, next);
+        cur.page = next;
+        cur.exhausted = result.exhausted;
+        // Filter out already-rendered items (by id and by title+date)
+        cur.buffer = result.videos.filter(
+          (v) => v && !seenIds.has(v.id) && !seenKeys.has(dupKey(v))
+        );
+      } catch (e) {
+        console.warn(`[OCF] ${source} fetch failed`, e);
+        cur.exhausted = true;
+      }
+    }
+
     async function loadMore(autoSelect = false) {
-      if (loading || exhausted) return;
+      if (loading) return;
+      if (cursors.gateway.exhausted && cursors.milb.exhausted
+          && cursors.gateway.buffer.length === 0 && cursors.milb.buffer.length === 0) {
+        return;
+      }
       loading = true;
 
       const spinner = document.createElement("div");
@@ -1633,32 +1777,52 @@
       list.appendChild(spinner);
 
       try {
-        currentPage++;
-        const result = await fetchVideos(playerName, currentPage, { mlbId, positionText, filter: activeFilter });
+        // Top up both buffers in parallel so we can compare heads.
+        await Promise.all([ensureBuffer("gateway"), ensureBuffer("milb")]);
+
+        const newItems = [];
+        while (newItems.length < VIDEOS_PER_PAGE) {
+          // Refill any empty buffer (one source may run out before the other).
+          const refills = [];
+          if (cursors.gateway.buffer.length === 0 && !cursors.gateway.exhausted) refills.push(ensureBuffer("gateway"));
+          if (cursors.milb.buffer.length === 0 && !cursors.milb.exhausted) refills.push(ensureBuffer("milb"));
+          if (refills.length) await Promise.all(refills);
+
+          const gw = cursors.gateway.buffer[0];
+          const mb = cursors.milb.buffer[0];
+          if (!gw && !mb) break; // both exhausted and drained
+
+          let pick;
+          if (!gw) pick = "milb";
+          else if (!mb) pick = "gateway";
+          else pick = (gw.date || "") >= (mb.date || "") ? "gateway" : "milb";
+
+          const item = cursors[pick].buffer.shift();
+          if (!item) continue;
+          const key = dupKey(item);
+          if (seenIds.has(item.id) || seenKeys.has(key)) continue;
+          seenIds.add(item.id);
+          seenKeys.add(key);
+          newItems.push(item);
+        }
+
         spinner.remove();
 
-        if (result.videos.length === 0) {
+        if (newItems.length === 0) {
           if (allVideos.length === 0) {
             list.innerHTML = `<div class="ocf-video-modal__empty">No videos found</div>`;
           }
-          exhausted = true;
           return;
         }
 
-        allVideos = allVideos.concat(result.videos);
-        appendVideoItems(list, result.videos, overlay);
+        allVideos = allVideos.concat(newItems);
+        appendVideoItems(list, newItems, overlay);
 
-        if (autoSelect && result.videos.length > 0) {
-          selectVideo(overlay, result.videos[0]);
-        }
-
-        if (result.videos.length < VIDEOS_PER_PAGE) {
-          exhausted = true;
-        }
+        if (autoSelect) selectVideo(overlay, newItems[0]);
       } catch (e) {
         console.warn("[OCF] Video fetch failed", e);
         spinner.remove();
-        if (currentPage === 1) {
+        if (allVideos.length === 0) {
           list.innerHTML = `<div class="ocf-video-modal__empty">Failed to load videos</div>`;
         }
       } finally {
@@ -1683,10 +1847,11 @@
         btn.addEventListener("click", () => {
           if (key === activeFilter) return;
           activeFilter = key;
-          // Reset state
-          currentPage = 0;
+          // Reset state for new filter
           allVideos = [];
-          exhausted = false;
+          seenIds = new Set();
+          seenKeys = new Set();
+          cursors = newCursors();
           list.innerHTML = "";
           player.removeAttribute("src");
           overlay.querySelector(".ocf-video-modal__title").textContent = playerName;

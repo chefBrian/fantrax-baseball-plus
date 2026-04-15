@@ -38,7 +38,7 @@ Toggle individual features on/off and choose Auto/Light/Dark theme from the tool
 - **Statcast** - links to Baseball Savant player page, plus a percentile rankings panel on the player card with statcast-style colored bars
 - **Rolling xwOBA** - interactive chart on hitter cards showing expected wOBA over a rolling window
 - **FanGraphs** - pitcher cards show Stuff+, Location+, Pitching+, xFIP, and SIERA with percentile-style bars
-- **MLB Video** - inline video modal with filtered highlights
+- **MLB & MiLB Video** - inline video modal with filtered highlights, including minor league clips for prospects and players on rehab assignments
 - **Live Game** - red pulsing icon links directly to the live stream when a player's game is in progress. Exclusive broadcasts (Peacock, Apple TV+, ESPN, Netflix, TBS) link to the correct streaming platform instead of MLB.tv
 - **Light & Dark Mode** - injected panels and modals match Fantrax's theme automatically, with an Auto/Light/Dark override in the settings popup
 
@@ -52,7 +52,7 @@ All features can be individually toggled on/off from the extension toolbar popup
 
 Clicking the video icon opens a modal with:
 - 16:9 video player with auto-play
-- Scrollable video list sidebar with infinite scroll
+- Scrollable video list sidebar with infinite scroll, merging MLB and MiLB highlights in chronological order
 - Auto-advances to the next video when current one ends
 - Filter buttons in the header bar:
   - **Hitters**: All BIP (balls in play), Hits, Home Runs
@@ -77,8 +77,8 @@ Clicking the video icon opens a modal with:
 
 - Content script injects links into Fantrax DOM elements via a MutationObserver
 - MLB player IDs are looked up via the [MLB Stats API](https://statsapi.mlb.com/api/v1/people/search)
-- Videos are fetched from the MLB Film Room GraphQL API (`fastball-gateway.mlb.com`) via the background script
-- Hitter videos use structured queries with `HitResult` and `HitDistance` filters; pitcher highlights use FREETEXT search; strikeout/HR filters use structured queries
+- MLB videos are fetched from the MLB Film Room GraphQL API (`fastball-gateway.mlb.com`) via the background script; MiLB videos are fetched directly from `dapi-milb.mlbinfra.com` and merged into the same list
+- Hitter videos use structured queries with `HitResult` filters; pitcher highlights use FREETEXT search
 - Statcast percentile data is fetched from Baseball Savant; rolling xwOBA chart renders on a `<canvas>` element for hitters
 - FanGraphs pitcher stats (Stuff+, Location+, Pitching+, xFIP, SIERA) are fetched from the FanGraphs leaderboard API
 - `declarativeNetRequest` rules inject headers for `fastball-clips.mlb.com` video playback
@@ -96,6 +96,8 @@ src/
     content.css          # Styles for injected links and video modal
     popup.html           # Toolbar popup with feature toggle switches
     popup.js             # Reads/writes settings to browser.storage.sync
+    setup.html           # First-run welcome page (prompts for site permissions)
+    setup.js             # Setup page logic
     icons/               # Extension icons (16, 48, 96, 128px)
   chrome/
     manifest.json        # Chrome MV3 manifest (service worker)
