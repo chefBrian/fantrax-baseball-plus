@@ -1415,9 +1415,12 @@
   // them out by title. Used for hitter "all-bip" / "hits" filters where we
   // intentionally don't constrain by HitDistance (MiLB clips often lack it).
   const STRIKEOUT_TITLE_RE = /\b(?:strikes? out|out on strikes|strikeout|K['']?s)\b/i;
+  // ABS challenge review clips (ball/strike call reviews) also leak into
+  // BatterId-based structured queries but aren't balls in play.
+  const ABS_CHALLENGE_TITLE_RE = /ABS challenge/i;
 
-  function isStrikeoutTitle(title) {
-    return !!title && STRIKEOUT_TITLE_RE.test(title);
+  function isNonBipTitle(title) {
+    return !!title && (STRIKEOUT_TITLE_RE.test(title) || ABS_CHALLENGE_TITLE_RE.test(title));
   }
 
   const MILB_PAGE_SIZE = 25;
@@ -1500,13 +1503,13 @@
     const activeFilter = filters[filter];
     const query = activeFilter.query(mlbId, playerName);
     const search = await doVideoFetch(query, page - 1, activeFilter.queryType);
-    const dropStrikeouts = filter === "all-bip" || filter === "hits";
+    const dropNonBip = filter === "all-bip" || filter === "hits";
     const rawCount = (search.plays || []).length;
 
     const videos = (search.plays || []).map((play) => {
       const mp = play.mediaPlayback?.[0];
       if (!mp) return null;
-      if (dropStrikeouts && isStrikeoutTitle(mp.title)) return null;
+      if (dropNonBip && isNonBipTitle(mp.title)) return null;
 
       const feeds = mp.feeds || [];
       let videoUrl = null;
@@ -1570,9 +1573,9 @@
     }
 
     if (activeFilter.milbTitleFilter === "hits") {
-      videos = videos.filter((v) => HIT_TITLE_RE.test(v.title) && !isStrikeoutTitle(v.title));
+      videos = videos.filter((v) => HIT_TITLE_RE.test(v.title) && !isNonBipTitle(v.title));
     } else if (activeFilter === HITTER_FILTERS["all-bip"]) {
-      videos = videos.filter((v) => !isStrikeoutTitle(v.title));
+      videos = videos.filter((v) => !isNonBipTitle(v.title));
     }
 
     return { videos, exhausted };
