@@ -899,7 +899,7 @@
 
     const container = canvas.parentElement;
     const cssWidth = container.clientWidth;
-    const cssHeight = 140;
+    const cssHeight = container.clientHeight;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = cssWidth * dpr;
     canvas.height = cssHeight * dpr;

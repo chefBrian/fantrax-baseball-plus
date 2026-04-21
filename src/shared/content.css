@@ -203,10 +203,13 @@ html.ocf-light {
   border-radius: 20px;
   box-shadow: var(--ocf-panel-shadow);
   font-family: Poppins, sans-serif;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ocf-scrollbar) transparent;
 }
 
 /* Header */
@@ -215,7 +218,7 @@ html.ocf-light {
   position: sticky;
   top: 0;
   background: var(--ocf-panel-bg);
-  z-index: 1;
+  z-index: 2;
 }
 
 .ocf-statcast-header-top {
@@ -300,7 +303,7 @@ html.ocf-light {
 
 /* Body */
 .ocf-statcast-body {
-  padding: 0 10px 8px;
+  padding: 0 10px 6px;
 }
 
 .ocf-statcast-section-title {
@@ -455,11 +458,15 @@ html.ocf-light {
 .ocf-rolling-divider {
   height: 1px;
   background: var(--ocf-divider-2);
-  margin: 6px 10px 0;
+  margin: 4px 10px 0;
 }
 
 .ocf-rolling-section {
-  padding: 8px 10px 6px;
+  padding: 6px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .ocf-rolling-header {
@@ -507,8 +514,9 @@ html.ocf-light {
 
 .ocf-rolling-canvas-wrap {
   position: relative;
-  height: 140px;
-  overflow: visible;
+  flex: 1;
+  min-height: 116px;
+  overflow: hidden;
 }
 
 .ocf-rolling-canvas-wrap canvas {
@@ -578,7 +586,7 @@ html.ocf-light {
 .ocf-fangraphs-divider {
   height: 1px;
   background: var(--ocf-divider-2);
-  margin: 6px 10px 0;
+  margin: 4px 10px 0;
 }
 
 .ocf-fangraphs-section {
