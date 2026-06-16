@@ -170,6 +170,15 @@
     return name.replace(/-(P|H|DH)$/i, "").trim();
   }
 
+  // Accent-insensitive, lowercase name key for matching (e.g. "José" -> "jose")
+  function normalizeName(s) {
+    return (s || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
   async function lookupMlbId(playerName, teamHint) {
     const normalizedTeam = normalizeTeam(teamHint);
     const cacheKey = `${playerName}|${normalizedTeam || ""}`;
@@ -192,6 +201,29 @@
         const data = await resp.json();
         people = data.people || [];
         if (people.length > 0) break;
+      }
+      // Fallback: the full-name search misses players whose canonical MLB name
+      // carries a middle initial - e.g. "José A. Ferrer" won't match "Jose Ferrer".
+      // Search by last name (accents are folded by the API) and keep only exact
+      // first+last matches, then let the team disambiguation below pick the right one.
+      if (people.length === 0) {
+        const parts = playerName.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          const lastName = parts[parts.length - 1];
+          const resp = await fetch(
+            `${MLB_SEARCH_API}${encodeURIComponent(lastName)}&hydrate=currentTeam`
+          );
+          if (resp.ok) {
+            const data = await resp.json();
+            const wantFirst = normalizeName(parts[0]);
+            const wantLast = normalizeName(lastName);
+            people = (data.people || []).filter(
+              (p) =>
+                normalizeName(p.firstName) === wantFirst &&
+                normalizeName(p.lastName) === wantLast
+            );
+          }
+        }
       }
       if (people.length === 0) return null;
 
