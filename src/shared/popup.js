@@ -1,7 +1,7 @@
 const browser = globalThis.browser || globalThis.chrome;
 
-const FEATURES = ["bbref", "statcastIcon", "statcastPanel", "video", "liveGame", "fangraphsPanel"];
-const DEFAULTS = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true, themeOverride: "auto" };
+const FEATURES = ["bbref", "statcastIcon", "statcastPanel", "video", "liveGame", "fangraphsPanel", "prospectSavantPanel"];
+const DEFAULTS = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true, prospectSavantPanel: true, themeOverride: "auto" };
 
 const BASE_ORIGINS = ["*://*.fantrax.com/*"];
 const FEATURE_ORIGINS = {
@@ -15,6 +15,7 @@ const FEATURE_ORIGINS = {
   ],
   liveGame: ["https://statsapi.mlb.com/*"],
   fangraphsPanel: ["https://statsapi.mlb.com/*", "https://www.fangraphs.com/*"],
+  prospectSavantPanel: ["https://statsapi.mlb.com/*", "https://oriolebird.pythonanywhere.com/*"],
 };
 
 function originsForEnabled(features) {

@@ -58,7 +58,7 @@
   const MLB_SEARCH_API = "https://statsapi.mlb.com/api/v1/people/search?names=";
   const VIDEOS_PER_PAGE = 25;
   // Feature toggles (all on by default, overridden by storage)
-  const features = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true };
+  const features = { bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true, prospectSavantPanel: true };
   // Cache MLB ID lookups
   const mlbIdCache = new Map();
 
@@ -526,6 +526,363 @@
     }
   }
 
+  const prospectCache = new Map();
+
+  async function fetchProspectSavant(mlbId) {
+    if (prospectCache.has(mlbId)) return prospectCache.get(mlbId);
+    try {
+      const result = await browser.runtime.sendMessage({
+        type: "ocf-fetch-prospect-savant",
+        playerId: mlbId,
+      });
+      const data = result && result.ok ? result.data : null;
+      const value = data && Object.keys(data).length ? data : null;
+      prospectCache.set(mlbId, value);
+      return value;
+    } catch (e) {
+      console.warn("[OCF] ProspectSavant fetch failed:", e);
+      return null;
+    }
+  }
+
+  // ProspectSavant rolling-data is PER-GAME (not pre-smoothed) and per-season. We cache the
+  // raw per-game series and compute a trailing N-game average on demand for each selectable
+  // window, then feed the existing drawRollingChart renderer.
+  const prospectRollingCache = new Map();
+  const PROSPECT_ROLLING_WINDOW = 20;
+
+  async function fetchProspectRolling(mlbId, season) {
+    const cacheKey = `${mlbId}-${season}`;
+    if (prospectRollingCache.has(cacheKey)) return prospectRollingCache.get(cacheKey);
+    let games = null;
+    try {
+      const result = await browser.runtime.sendMessage({
+        type: "ocf-fetch-prospect-rolling",
+        playerId: mlbId,
+        season,
+        playerType: "batter",
+      });
+      if (result && result.ok && Array.isArray(result.data)) {
+        games = result.data
+          .filter((g) => g && g.game_date != null && g.xwoba != null && !isNaN(parseFloat(g.xwoba)))
+          .map((g) => ({ xwoba: parseFloat(g.xwoba), abs: Number(g.abs) > 0 ? Number(g.abs) : 1, date: String(g.game_date) }))
+          .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      }
+    } catch (e) {
+      console.warn("[OCF] ProspectSavant rolling fetch failed:", e);
+    }
+    prospectRollingCache.set(cacheKey, games);
+    return games;
+  }
+
+  // Trailing N-game AB-weighted rolling xwOBA; first point lands once N games exist.
+  function computeRollingSeries(games, window) {
+    const out = [];
+    for (let i = window - 1; i < games.length; i++) {
+      let num = 0, den = 0;
+      for (let j = i - window + 1; j <= i; j++) {
+        num += games[j].xwoba * games[j].abs;
+        den += games[j].abs;
+      }
+      if (den > 0) out.push({ xwoba: num / den, max_game_date: games[i].date });
+    }
+    return out;
+  }
+
+  // Savant rows ProspectSavant never provides for MiLB (no bat-tracking / no xERA) -> hidden
+  // in the MiLB view rather than shown as permanent "NOT QUALIFIED".
+  const PS_UNAVAILABLE_STATS = new Set(["bat_speed", "squared_up_rate", "xera"]);
+
+  // PS percentile field (0-1 decimal) -> existing Savant stat key (bar renderer keys off these)
+  const PS_PCT_TO_SAVANT = {
+    xwoba_p: "xwoba", xba_p: "xba", xslg_p: "xslg",
+    ev_p: "exit_velocity", barrelbbe_p: "brl_percent", hhrate_p: "hard_hit_percent",
+    chaserate_p: "chase_percent", whiffrate_p: "whiff_percent",
+    krate_p: "k_percent", bbrate_p: "bb_percent",
+    spd_p: "sprint_speed",   // batters
+    velo_p: "fb_velocity",   // pitchers
+  };
+
+  // Batted-ball (Statcast tracking) derived stats. When a player's MiLB park/feed has
+  // no batted-ball tracking, ProspectSavant reports these percentiles as a literal 0
+  // (not null) even though the underlying value is missing (bip === 0). Treat that as
+  // "no data" (NQ) rather than rendering a misleading 0th-percentile bar.
+  const PS_BATTED_BALL_KEYS = new Set([
+    "xwoba", "xba", "xslg", "exit_velocity", "brl_percent", "hard_hit_percent",
+  ]);
+
+  function normalizeProspectRow(row) {
+    const data = {};
+    const noBattedBall = Number(row.bip) === 0;
+    for (const [psKey, savantKey] of Object.entries(PS_PCT_TO_SAVANT)) {
+      if (noBattedBall && PS_BATTED_BALL_KEYS.has(savantKey)) continue;
+      const v = row[psKey];
+      if (v != null && !isNaN(v)) data[savantKey] = String(Math.round(v * 100));
+    }
+    return data;
+  }
+
+  const MILB_LEVEL_ORDER = { MLB: 7, AAA: 6, AA: 5, "A+": 4, A: 3, "A-": 2, R: 1 };
+
+  function prospectEntries(psData, pitcher) {
+    return Object.entries(psData)
+      .map(([key, row]) => {
+        const us = key.indexOf("_");
+        const season = key.slice(0, us);
+        const level = key.slice(us + 1);
+        return {
+          key, season, level, source: "MiLB", pitcher,
+          label: `${season} ${level}`,
+          data: normalizeProspectRow(row),
+          fv: row.fv != null ? String(row.fv) : null,
+        };
+      })
+      .sort((a, b) =>
+        b.season - a.season ||
+        (MILB_LEVEL_ORDER[b.level] || 0) - (MILB_LEVEL_ORDER[a.level] || 0)
+      );
+  }
+
+  function mlbEntries(yearData, pitcher) {
+    return Object.keys(yearData)
+      .sort((a, b) => b - a)
+      .map((year) => ({
+        key: `MLB_${year}`, season: year, level: "MLB", source: "MLB", pitcher,
+        label: `${year} (MLB)`, data: yearData[year], fv: null,
+      }));
+  }
+
+  function renderBars(panel, data) {
+    const deferred = [];
+    panel.querySelectorAll(".ocf-statcast-row[data-stat]").forEach((row) => {
+      const key = row.dataset.stat;
+      const pct = parseInt(data ? data[key] : "", 10);
+      const fill = row.querySelector(".ocf-statcast-fill");
+      const label = row.querySelector(".ocf-statcast-pct");
+      if (isNaN(pct)) {
+        fill.style.width = "0%"; fill.style.background = "transparent";
+        label.textContent = ""; label.style.display = "none";
+        const lbl = row.querySelector(".ocf-statcast-label");
+        lbl.classList.add("ocf-statcast-label--nq");
+        lbl.classList.remove("ocf-statcast-label--qualified");
+      } else {
+        const wasHidden = label.style.display === "none";
+        const color = getPercentileColor(pct);
+        label.textContent = pct; label.style.background = color;
+        label.style.textShadow = pct >= 35 && pct <= 60 ? "0 0 2px rgba(0,0,0,0.9)" : "none";
+        if (wasHidden) {
+          label.style.left = "0%"; label.style.display = "";
+          fill.style.width = "0%"; fill.style.background = color;
+          deferred.push({ fill, label, pct });
+        } else {
+          fill.style.width = Math.max(pct, 6) + "%"; fill.style.background = color;
+          label.style.left = Math.max(pct, 4) + "%";
+        }
+        const lbl = row.querySelector(".ocf-statcast-label");
+        lbl.classList.remove("ocf-statcast-label--nq");
+        lbl.classList.add("ocf-statcast-label--qualified");
+      }
+    });
+    if (deferred.length) {
+      requestAnimationFrame(() => {
+        for (const { fill, label, pct } of deferred) {
+          fill.style.width = Math.max(pct, 6) + "%";
+          label.style.left = Math.max(pct, 4) + "%";
+        }
+      });
+    }
+  }
+
+  function renderSourcePanel(panel, entries, selectedKey, playerName, mlbId, ctx) {
+    const entry = entries.find((e) => e.key === selectedKey) || entries[0];
+    const pitcher = entry.pitcher;
+    const urlName = makeUrlName(playerName);
+    const isMiLB = entry.source === "MiLB";
+    const title = isMiLB ? `${entry.level} Percentile Rankings` : "MLB Percentile Rankings";
+    const scHref = isMiLB
+      ? `https://prospectsavant.com/player/${mlbId}`
+      : `https://baseballsavant.mlb.com/savant-player/${urlName}-${mlbId}?stats=${pitcher ? "statcast-r-pitching-mlb" : "statcast-r-hitting-mlb"}`;
+
+    // ProspectSavant never provides these (no MiLB bat-tracking / xERA), so hide the rows
+    // entirely in the MiLB view instead of showing permanent "NOT QUALIFIED".
+    const filterMilb = (stats) => isMiLB ? stats.filter((s) => !PS_UNAVAILABLE_STATS.has(s.key)) : stats;
+    const battingStats = filterMilb([...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS]);
+    const pitchingStats = filterMilb(PITCHING_PERCENTILE_STATS);
+    const bodyHTML = pitcher
+      ? `<div class="ocf-statcast-section-title">Statcast</div>${buildStatRowsHTML(pitchingStats)}`
+      : buildStatRowsHTML(battingStats);
+
+    panel.innerHTML = `
+      <div class="ocf-statcast-header">
+        <div class="ocf-statcast-header-top">
+          <select class="ocf-statcast-year"></select>
+          <span class="ocf-statcast-title">${title}</span>
+          <a class="ocf-statcast-savant-link" href="${scHref}" target="_blank" rel="noopener noreferrer">
+            <mat-icon class="mat-icon material-icons" style="font-size:14px;width:14px;height:14px;">open_in_new</mat-icon>
+            ${isMiLB ? "ps" : "sc"}
+          </a>
+        </div>
+        <div class="ocf-statcast-axis">
+          <span class="ocf-statcast-label"></span>
+          <div class="ocf-statcast-axis-labels">
+            <span class="ocf-statcast-axis--poor">POOR</span>
+            <span class="ocf-statcast-axis--avg">AVERAGE</span>
+            <span class="ocf-statcast-axis--great">GREAT</span>
+          </div>
+        </div>
+      </div>
+      <div class="ocf-statcast-body">${bodyHTML}</div>
+    `;
+
+    panel.dataset.source = entry.source;
+    if (entry.source === "MiLB") { panel.dataset.noFgData = "true"; updatePanelFullWidth(panel); }
+    panel._entries = panel._entries || {};
+    panel._entries[entry.source] = entries;
+    panel._playerName = playerName;
+    panel._mlbId = mlbId;
+    panel._pitcher = pitcher;
+    renderBars(panel, entry.data);
+    wireSourceSelect(panel);
+    return entry;
+  }
+
+  const SENTINEL = { MLB: "__load_MLB__", MiLB: "__load_MiLB__" };
+
+  function wireSourceSelect(panel) {
+    const select = panel.querySelector(".ocf-statcast-year");
+    if (!select) return;
+    const source = panel.dataset.source;
+    const entries = panel._entries[source];
+    if (!entries) return;
+    const current = panel.dataset.selectedKey || entries[0].key;
+    panel.dataset.selectedKey = current;
+
+    select.innerHTML = "";
+    for (const e of entries) {
+      const o = document.createElement("option");
+      o.value = e.key; o.textContent = e.label; select.appendChild(o);
+    }
+    const other = source === "MLB" ? "MiLB" : "MLB";
+    const sentinel = document.createElement("option");
+    sentinel.value = SENTINEL[other];
+    sentinel.textContent = other === "MiLB" ? "— Minor Leagues —" : "— MLB —";
+    select.appendChild(sentinel);
+    select.value = current;
+
+    // default-year vs full-width parity with the MLB panel
+    panel.dataset.defaultStatcastYear = entries[0].key;
+    panel.dataset.statcastYear = current;
+    updatePanelComposition(panel); // Task 7
+
+    select.onchange = async () => {
+      const val = select.value;
+      if (val === SENTINEL.MLB || val === SENTINEL.MiLB) {
+        await loadOtherSource(panel, val === SENTINEL.MLB ? "MLB" : "MiLB");
+        return;
+      }
+      panel.dataset.selectedKey = val;
+      panel.dataset.statcastYear = val;
+      const e = entries.find((x) => x.key === val);
+      renderBars(panel, e.data);
+      appendFutureValue(panel, e);
+      updatePanelComposition(panel); // Task 7
+      if (e.source === "MiLB") updateMilbRolling(panel, e);
+    };
+  }
+
+  async function loadOtherSource(panel, target) {
+    const reqId = statcastPanelRequestId;
+    const mlbId = panel._mlbId, pitcher = panel._pitcher, playerName = panel._playerName;
+    let entries = panel._entries[target];
+    if (!entries) {
+      if (target === "MiLB") {
+        const psData = await fetchProspectSavant(mlbId);
+        entries = psData ? prospectEntries(psData, pitcher) : [];
+      } else {
+        const yearData = await fetchStatcastPercentiles(mlbId, pitcher ? "pitcher" : "batter");
+        entries = yearData ? mlbEntries(yearData, pitcher) : [];
+      }
+      if (reqId !== statcastPanelRequestId || !document.contains(panel)) return;
+    }
+    if (!entries.length) {
+      // revert select to current source; show transient message
+      const select = panel.querySelector(".ocf-statcast-year");
+      if (select) select.value = panel.dataset.selectedKey;
+      const titleEl = panel.querySelector(".ocf-statcast-title");
+      if (titleEl) {
+        const prev = titleEl.textContent;
+        titleEl.textContent = target === "MiLB" ? "No MiLB Statcast data" : "No MLB Statcast data";
+        setTimeout(() => { if (titleEl.isConnected) titleEl.textContent = prev; }, 2000);
+      }
+      return;
+    }
+    panel.dataset.selectedKey = entries[0].key;
+    renderSourcePanel(panel, entries, entries[0].key, playerName, mlbId, {});
+    appendFutureValue(panel, entries[0]);
+    // Rolling xwOBA chart: MLB uses Savant rolling-thumb; MiLB uses ProspectSavant rolling-data
+    if (target === "MLB" && !pitcher) {
+      const rollingData = await fetchRollingData(mlbId);
+      if (reqId !== statcastPanelRequestId || !document.contains(panel)) return;
+      appendRollingSection(panel, rollingData);
+    } else if (target === "MiLB") {
+      updateMilbRolling(panel, entries[0]);
+    }
+  }
+
+  function updatePanelComposition(panel) {
+    const isMiLB = panel.dataset.source === "MiLB";
+    if (isMiLB) {
+      // FanGraphs has no MiLB data: remove its section and force full-width.
+      panel.querySelector(".ocf-fangraphs-divider")?.remove();
+      panel.querySelector(".ocf-fangraphs-section")?.remove();
+      panel.dataset.noFgData = "true";
+    } else if (panel._pitcher && features.fangraphsPanel) {
+      // MLB pitcher: ensure the FanGraphs section exists.
+      if (!panel.querySelector(".ocf-fangraphs-section")) {
+        appendFangraphsSection(panel, panel._mlbId);
+      }
+      panel.dataset.noFgData = "false";
+    } else {
+      panel.dataset.noFgData = "true"; // MLB hitter, as today
+    }
+    updatePanelFullWidth(panel);
+  }
+  // ProspectSavant does not compute iso_p / wrcplus_p (always 0 or null, even for elite
+  // ProspectSavant doesn't compute usable ISO/wRC+/Max-EV percentiles for the extras
+  // group, so we drop it entirely and instead append the Future Value grade (when > 0)
+  // under the last stat row (Sprint Speed for hitters).
+  // Future Value is a 20-80 scouting grade. The panel's percentile palette washes out in
+  // the middle (where most prospects, FV 45-50, land), so use a dedicated ramp that stays
+  // saturated and legible across the meaningful 40-60 band. Warmer = better; "+" bumps up.
+  function fvColor(fv) {
+    const n = parseInt(fv, 10);
+    if (isNaN(n) || n <= 0) return null;
+    const adj = /\+/.test(String(fv)) ? n + 2 : n;
+    if (adj < 38) return "#3f6fa8";   // <=35  org / depth        (blue)
+    if (adj < 43) return "#5a92bf";   // 40    fringe / role      (lighter blue)
+    if (adj < 48) return "#c98f3f";   // 45    bench / 2nd-div    (amber)
+    if (adj < 53) return "#d4783c";   // 50    avg regular        (orange)
+    if (adj < 58) return "#d2602f";   // 55    above-avg regular  (deep orange)
+    if (adj < 63) return "#c84a2c";   // 60    All-Star           (orange-red)
+    if (adj < 70) return "#b63326";   // 65    star               (red)
+    return "#9e1620";                 // 70+   elite              (deep red)
+  }
+
+  function appendFutureValue(panel, entry) {
+    panel.querySelector(".ocf-ps-fv-row")?.remove();
+    if (!entry || entry.source !== "MiLB") return;
+    const fv = entry.fv;
+    if (!fv || !(parseInt(fv, 10) > 0)) return;
+    const body = panel.querySelector(".ocf-statcast-body");
+    if (!body) return;
+    const color = fvColor(fv);
+    const badgeStyle = color ? ` style="background:${color};color:#fff;"` : "";
+    const row = document.createElement("div");
+    row.className = "ocf-statcast-row ocf-ps-fv-row";
+    row.innerHTML = `<span class="ocf-statcast-label ocf-statcast-label--qualified">Future Value</span><span class="ocf-ps-fv-grade"${badgeStyle}>${fv}</span>`;
+    body.appendChild(row);
+  }
+
   function removeStatcastPanel() {
     const existing = document.querySelector(".ocf-statcast-panel");
     if (existing) {
@@ -602,53 +959,7 @@
     }
 
     function updateBars() {
-      const data = yearData[currentYear];
-      const deferred = [];
-      panel.querySelectorAll(".ocf-statcast-row[data-stat]").forEach((row) => {
-        const key = row.dataset.stat;
-        const pct = parseInt(data ? data[key] : "", 10);
-        const fill = row.querySelector(".ocf-statcast-fill");
-        const label = row.querySelector(".ocf-statcast-pct");
-
-        if (isNaN(pct)) {
-          fill.style.width = "0%";
-          fill.style.background = "transparent";
-          label.textContent = "";
-          label.style.display = "none";
-          const lbl = row.querySelector(".ocf-statcast-label");
-          lbl.classList.add("ocf-statcast-label--nq");
-          lbl.classList.remove("ocf-statcast-label--qualified");
-        } else {
-          const wasHidden = label.style.display === "none";
-          const color = getPercentileColor(pct);
-          label.textContent = pct;
-          label.style.background = color;
-          label.style.textShadow = pct >= 35 && pct <= 60 ? "0 0 2px rgba(0,0,0,0.9)" : "none";
-          if (wasHidden) {
-            // Set initial state at 0, defer targets to next frame for transition
-            label.style.left = "0%";
-            label.style.display = "";
-            fill.style.width = "0%";
-            fill.style.background = color;
-            deferred.push({ fill, label, pct });
-          } else {
-            fill.style.width = Math.max(pct, 6) + "%";
-            fill.style.background = color;
-            label.style.left = Math.max(pct, 4) + "%";
-          }
-          const lbl = row.querySelector(".ocf-statcast-label");
-          lbl.classList.remove("ocf-statcast-label--nq");
-          lbl.classList.add("ocf-statcast-label--qualified");
-        }
-      });
-      if (deferred.length) {
-        requestAnimationFrame(() => {
-          for (const { fill, label, pct } of deferred) {
-            fill.style.width = Math.max(pct, 6) + "%";
-            label.style.left = Math.max(pct, 4) + "%";
-          }
-        });
-      }
+      renderBars(panel, yearData[currentYear]);
     }
 
     updateBars();
@@ -762,9 +1073,31 @@
     return panel;
   }
 
-  async function populateStatcastFromModal(panel, playerName, positionText, teamHint) {
+  // Replace the loading skeleton with a clear message when neither source has data, instead
+  // of leaving the spinner running forever.
+  function showStatcastNoData(panel, isMinors) {
+    panel._rollingSection = null;
+    panel.dataset.noFgData = "true";
+    const msg = isMinors
+      ? "No MiLB or MLB Statcast data available for this player."
+      : "No MLB Statcast data available for this player.";
+    panel.innerHTML = `
+      <div class="ocf-statcast-header">
+        <div class="ocf-statcast-header-top">
+          <span class="ocf-statcast-title">Percentile Rankings</span>
+        </div>
+      </div>
+      <div class="ocf-statcast-empty">${msg}</div>
+    `;
+  }
+
+  async function populateStatcastFromModal(panel, playerName, positionText, teamHint, isMinors) {
     const requestId = ++statcastPanelRequestId;
     const pitcher = isPitcher(positionText);
+    // Reset cached per-source entries so a reused panel (modal recycled for a new
+    // player) never shows the previous player's data when toggling sources.
+    panel._entries = {};
+    delete panel.dataset.selectedKey;
 
     // If pitcher, rebuild the skeleton body with pitcher stats + FanGraphs shimmer
     if (pitcher) {
@@ -797,36 +1130,35 @@
     }
 
     const mlbId = await lookupMlbId(playerName, teamHint);
-    if (!mlbId || requestId !== statcastPanelRequestId) return;
-    if (!document.contains(panel)) return;
+    if (requestId !== statcastPanelRequestId || !document.contains(panel)) return;
+    if (!mlbId) { showStatcastNoData(panel, isMinors); return; }
+
+    if (isMinors && features.prospectSavantPanel) {
+      const psData = await fetchProspectSavant(mlbId);
+      if (requestId !== statcastPanelRequestId || !document.contains(panel)) return;
+      if (psData) {
+        const entries = prospectEntries(psData, pitcher);
+        renderSourcePanel(panel, entries, entries[0].key, playerName, mlbId, { isMinors });
+        appendFutureValue(panel, entries[0]);
+        updateMilbRolling(panel, entries[0]);
+        return;
+      }
+      // fall through to MLB if PS empty despite the flag
+    }
 
     // Fetch percentiles and rolling data in parallel
     const [yearData, rollingData] = await Promise.all([
       fetchStatcastPercentiles(mlbId, pitcher ? "pitcher" : "batter"),
       pitcher ? Promise.resolve(null) : fetchRollingData(mlbId),
     ]);
-    if (!yearData || requestId !== statcastPanelRequestId) return;
-    if (!document.contains(panel)) return;
+    if (requestId !== statcastPanelRequestId || !document.contains(panel)) return;
+    if (!yearData) { showStatcastNoData(panel, isMinors); return; }
 
     populateStatcastPanel(panel, yearData, playerName, mlbId, pitcher);
 
     // Append rolling xwOBA chart for hitters only
     if (!pitcher) {
-      const hasRollingData = rollingData && (rollingData.plate50?.length || rollingData.plate100?.length || rollingData.plate250?.length);
-      if (hasRollingData) {
-        appendRollingChart(panel, rollingData, pitcher);
-      } else {
-        panel.querySelector(".ocf-rolling-divider")?.remove();
-        panel.querySelector(".ocf-rolling-section")?.remove();
-        const divider = document.createElement("div");
-        divider.className = "ocf-rolling-divider";
-        panel.appendChild(divider);
-        const errSection = document.createElement("div");
-        errSection.className = "ocf-rolling-section";
-        const msg = rollingData ? "Not enough data yet" : "Unable to load rolling data";
-        errSection.innerHTML = `<div class="ocf-rolling-header"><span class="ocf-rolling-title">Rolling xwOBA</span></div><div class="ocf-rolling-error">${msg}</div>`;
-        panel.appendChild(errSection);
-      }
+      appendRollingSection(panel, rollingData);
     }
 
     // Append FanGraphs section for pitchers
@@ -1098,6 +1430,24 @@
     if (dot) dot.classList.remove("ocf-rolling-dot--visible");
   }
 
+  function appendRollingSection(panel, rollingData) {
+    const hasRollingData = rollingData && (rollingData.plate50?.length || rollingData.plate100?.length || rollingData.plate250?.length);
+    if (hasRollingData) {
+      appendRollingChart(panel, rollingData, false);
+    } else {
+      panel.querySelector(".ocf-rolling-divider")?.remove();
+      panel.querySelector(".ocf-rolling-section")?.remove();
+      const divider = document.createElement("div");
+      divider.className = "ocf-rolling-divider";
+      panel.appendChild(divider);
+      const errSection = document.createElement("div");
+      errSection.className = "ocf-rolling-section";
+      const msg = rollingData ? "Not enough data yet" : "Unable to load rolling data";
+      errSection.innerHTML = `<div class="ocf-rolling-header"><span class="ocf-rolling-title">Rolling xwOBA</span></div><div class="ocf-rolling-error">${msg}</div>`;
+      panel.appendChild(errSection);
+    }
+  }
+
   function appendRollingChart(panel, rollingData, pitcher) {
     if (!rollingData || (!rollingData.plate50?.length && !rollingData.plate100?.length && !rollingData.plate250?.length)) return;
 
@@ -1168,6 +1518,64 @@
     // Store redraw function for resize handling
     section._redraw = () => parseAndDraw(activeWindow);
     panel._rollingSection = section;
+  }
+
+  // Rolling-xwOBA chart for the MiLB (ProspectSavant) view: a single fixed-window series
+  // recomputed from the raw per-game data, reusing the MLB canvas renderer.
+  function appendProspectRollingChart(panel, games) {
+    panel.querySelector(".ocf-rolling-divider")?.remove();
+    panel.querySelector(".ocf-rolling-section")?.remove();
+
+    const series = computeRollingSeries(games, PROSPECT_ROLLING_WINDOW);
+    if (!series.length) return;
+
+    const divider = document.createElement("div");
+    divider.className = "ocf-rolling-divider";
+    panel.appendChild(divider);
+
+    const section = document.createElement("div");
+    section.className = "ocf-rolling-section";
+    section.innerHTML = `
+      <div class="ocf-rolling-header">
+        <span class="ocf-rolling-title">Rolling xwOBA</span>
+        <span class="ocf-rolling-subtitle">${PROSPECT_ROLLING_WINDOW}-game</span>
+      </div>
+      <div class="ocf-rolling-canvas-wrap">
+        <canvas></canvas>
+        <div class="ocf-rolling-dot"></div>
+        <div class="ocf-rolling-tooltip"></div>
+      </div>
+    `;
+    panel.appendChild(section);
+
+    const canvasEl = section.querySelector("canvas");
+    const tooltipEl = section.querySelector(".ocf-rolling-tooltip");
+    const dotEl = section.querySelector(".ocf-rolling-dot");
+    canvasEl._dot = dotEl;
+    canvasEl._pitcher = false;
+
+    const draw = () => drawRollingChart(canvasEl, series, tooltipEl, false);
+    draw();
+
+    canvasEl.addEventListener("mousemove", handleRollingMouseMove);
+    canvasEl.addEventListener("mouseleave", handleRollingMouseLeave);
+
+    section._redraw = draw;
+    panel._rollingSection = section;
+  }
+
+  // Fetch + render the MiLB rolling chart for the currently-selected entry. Guards against
+  // the user switching player/entry while the fetch is in flight.
+  async function updateMilbRolling(panel, entry) {
+    panel.querySelector(".ocf-rolling-divider")?.remove();
+    panel.querySelector(".ocf-rolling-section")?.remove();
+    if (!entry || entry.source !== "MiLB" || entry.pitcher) return;
+    const wantKey = entry.key;
+    const games = await fetchProspectRolling(panel._mlbId, entry.season);
+    if (!document.contains(panel)) return;
+    if (panel.dataset.source !== "MiLB" || panel.dataset.selectedKey !== wantKey) return;
+    if (!games || games.length < PROSPECT_ROLLING_WINDOW) return;
+    appendProspectRollingChart(panel, games);
   }
 
   // --- FanGraphs Section ---
@@ -1380,6 +1788,29 @@
     if (!positionText) return false;
     const positions = positionText.split(/[,/]/).map((p) => p.trim().toUpperCase());
     return positions.some((p) => p === "SP" || p === "RP" || p === "P");
+  }
+
+  function detectMinorsFromHeader(header) {
+    if (!header) return false;
+    const scope = header.querySelector(".player-profile__header__info") || header;
+    const RE = /minor league/i;
+    // Direct accessible attributes (aria-label / title / aria-description / Material tooltip attrs)
+    if (scope.querySelector(
+          '[aria-label*="Minor League" i],[title*="Minor League" i],' +
+          '[aria-description*="Minor League" i],[mattooltip*="Minor League" i],' +
+          '[ng-reflect-message*="Minor League" i]')) {
+      return true;
+    }
+    // Material tooltips reference their text via aria-describedby/aria-labelledby
+    for (const el of scope.querySelectorAll("[aria-describedby],[aria-labelledby]")) {
+      const ids = `${el.getAttribute("aria-describedby") || ""} ${el.getAttribute("aria-labelledby") || ""}`.trim().split(/\s+/);
+      for (const id of ids) {
+        const ref = id && document.getElementById(id);
+        if (ref && RE.test(ref.textContent || "")) return true;
+      }
+    }
+    // Fallback: visible text in the info row
+    return RE.test(scope.textContent || "");
   }
 
   const VIDEO_GQL_QUERY = `query Search($query: String!, $page: Int, $limit: Int, $feedPreference: FeedPreference, $languagePreference: LanguagePreference, $contentPreference: ContentPreference, $queryType: QueryType) {
@@ -2168,6 +2599,8 @@
         if (teamLink) teamName = teamLink.textContent.trim();
       }
 
+      const isMinors = detectMinorsFromHeader(header);
+
       const links = buildLinks(playerName, positionText, teamName, "lg");
 
       // Insert right after the player name
@@ -2182,12 +2615,12 @@
       if (features.statcastPanel) {
         const existingPanel = document.querySelector(".ocf-statcast-panel");
         if (existingPanel) {
-          populateStatcastFromModal(existingPanel, playerName, positionText, teamName);
+          populateStatcastFromModal(existingPanel, playerName, positionText, teamName, isMinors);
         } else {
           const overlayPane = header.closest(".cdk-overlay-pane");
           if (overlayPane) {
             const panel = showStatcastSkeleton(overlayPane);
-            populateStatcastFromModal(panel, playerName, positionText, teamName);
+            populateStatcastFromModal(panel, playerName, positionText, teamName, isMinors);
           }
         }
       }
@@ -2202,7 +2635,7 @@
   }
 
   // Load feature settings then inject
-  browser.storage.sync.get({ bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true, themeOverride: "auto" }).then((stored) => {
+  browser.storage.sync.get({ bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true, prospectSavantPanel: true, themeOverride: "auto" }).then((stored) => {
     Object.assign(features, stored);
     themeOverride = stored.themeOverride || "auto";
     reconcileTheme();

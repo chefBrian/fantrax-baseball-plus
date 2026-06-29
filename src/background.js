@@ -12,6 +12,7 @@ const FEATURE_ORIGINS = {
   ],
   liveGame: ["https://statsapi.mlb.com/*"],
   fangraphsPanel: ["https://statsapi.mlb.com/*", "https://www.fangraphs.com/*"],
+  prospectSavantPanel: ["https://statsapi.mlb.com/*", "https://oriolebird.pythonanywhere.com/*"],
 };
 const FEATURE_DEFAULTS = {
   bbref: true,
@@ -20,6 +21,7 @@ const FEATURE_DEFAULTS = {
   video: true,
   liveGame: true,
   fangraphsPanel: true,
+  prospectSavantPanel: true,
 };
 
 function getRequiredOrigins(features) {
@@ -245,6 +247,31 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then((r) => {
         if (!r.ok) throw new Error(`Savant ${r.status}`);
         return r.text();
+      })
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
+
+  if (msg.type === "ocf-fetch-prospect-savant") {
+    const url = `https://oriolebird.pythonanywhere.com/player/${encodeURIComponent(msg.playerId)}`;
+    fetch(url, { signal: AbortSignal.timeout(8000) })
+      .then((r) => {
+        if (!r.ok) throw new Error(`ProspectSavant ${r.status}`);
+        return r.json();
+      })
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
+
+  if (msg.type === "ocf-fetch-prospect-rolling") {
+    const type = msg.playerType === "pitcher" ? "pitcher" : "batter";
+    const url = `https://oriolebird.pythonanywhere.com/rolling-data/${encodeURIComponent(msg.playerId)}/${encodeURIComponent(msg.season)}/25/${type}`;
+    fetch(url, { signal: AbortSignal.timeout(8000) })
+      .then((r) => {
+        if (!r.ok) throw new Error(`ProspectSavant rolling ${r.status}`);
+        return r.json();
       })
       .then((data) => sendResponse({ ok: true, data }))
       .catch((e) => sendResponse({ ok: false, error: e.message }));

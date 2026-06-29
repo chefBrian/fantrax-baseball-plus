@@ -22,7 +22,8 @@
     "https://statsapi.mlb.com/*",
     "https://fastball-clips.mlb.com/*",
     "https://baseballsavant.mlb.com/*",
-    "https://www.fangraphs.com/*"
+    "https://www.fangraphs.com/*",
+    "https://oriolebird.pythonanywhere.com/*"
   ],
   "background": {
     "scripts": ["background.js"]
