@@ -714,9 +714,16 @@
         panel.style.right = "8px";
       }
 
-      panel.style.top = rect.top + "px";
-      panel.style.height = rect.height + "px";
-      panel.style.maxHeight = rect.height + "px";
+      // Size to content with a min floor and a viewport-aware max cap,
+      // rather than slaving the panel to the (variable) modal height.
+      const MIN_H = 360;
+      const HARD_MAX = 620;
+      let top = Math.max(8, Math.min(rect.top, window.innerHeight - MIN_H - 8));
+      const maxH = Math.min(HARD_MAX, window.innerHeight - top - 8);
+      panel.style.top = top + "px";
+      panel.style.height = "";
+      panel.style.minHeight = MIN_H + "px";
+      panel.style.maxHeight = maxH + "px";
     }
 
     updatePosition();
@@ -2132,10 +2139,7 @@
     );
 
     for (const header of headers) {
-      const titleDiv = header.querySelector(".player-profile__header__title");
-      if (!titleDiv) continue;
-
-      const nameLink = titleDiv.querySelector("h1 a");
+      const nameLink = header.querySelector(".player-profile__header__name a");
       if (!nameLink) continue;
 
       const playerName = cleanPlayerName(nameLink.textContent.trim());
@@ -2146,27 +2150,27 @@
 
       // Remove stale links if recycled
       if (prevName) {
-        titleDiv.querySelectorAll(".ocf-links--lg").forEach((el) => el.remove());
+        header.querySelectorAll(".ocf-links--lg").forEach((el) => el.remove());
       }
 
       header.setAttribute(PROCESSED_ATTR, playerName);
 
+      // Info row: <a>Team</a> • <span>Position</span> • #number ...icons
+      // Position is the only bare <span> (bullets carry ng-star-inserted, icons
+      // carry scorer-icon classes); team is the leading <a>.
       let positionText = null;
       let teamName = null;
-      const pEl = titleDiv.querySelector("p");
-      if (pEl) {
-        const posSpan = pEl.querySelector("span:not([class])");
+      const infoEl = header.querySelector(".player-profile__header__info");
+      if (infoEl) {
+        const posSpan = infoEl.querySelector("span:not([class])");
         if (posSpan) positionText = posSpan.textContent.trim();
-        // Team name is the text node before the first span (e.g. "Baltimore Orioles")
-        const firstChild = pEl.firstChild;
-        if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
-          teamName = firstChild.textContent.trim();
-        }
+        const teamLink = infoEl.querySelector("a");
+        if (teamLink) teamName = teamLink.textContent.trim();
       }
 
       const links = buildLinks(playerName, positionText, teamName, "lg");
 
-      // Insert right after the player name in h1
+      // Insert right after the player name
       nameLink.after(links);
 
       if (features.liveGame) {
@@ -2245,7 +2249,7 @@
     }
 
     function hasPlayerName() {
-      const link = overlay.querySelector(".player-profile__header h1 a");
+      const link = overlay.querySelector(".player-profile__header__name a");
       return link && link.textContent.trim();
     }
 

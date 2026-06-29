@@ -514,8 +514,7 @@ html.ocf-light {
 
 .ocf-rolling-canvas-wrap {
   position: relative;
-  flex: 1;
-  min-height: 116px;
+  height: 150px;
   overflow: hidden;
 }
 
