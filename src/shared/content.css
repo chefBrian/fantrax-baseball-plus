@@ -352,7 +352,7 @@ html.ocf-light {
   position: absolute;
   top: 50%;
   left: 0;
-  height: 14px;
+  height: 13px;
   transform: translateY(-50%);
   border-radius: 3px;
   transition: width 0.3s ease, background-color 0.3s ease;
