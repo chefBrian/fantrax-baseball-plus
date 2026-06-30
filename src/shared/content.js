@@ -657,19 +657,36 @@
     return result;
   }
 
-  // Fill blank (unqualified) percentile cells in the latest season's row with computed
-  // projections, mutating yearData in place and tagging projected keys via row._projected.
-  // No-op (and no network) for fully-qualified players, who have no blank cells.
-  async function enrichWithProjections(yearData, mlbId, pitcher) {
-    if (!yearData) return;
-    const years = Object.keys(yearData).sort((a, b) => b - a);
-    if (!years.length) return;
-    const year = years[0];
-    const row = yearData[year];
-    if (!row) return;
-    const type = pitcher ? "pitcher" : "batter";
-    const panelKeys = (pitcher ? PITCHING_PERCENTILE_STATS : [...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS])
+  // Panel stat keys we can compute a projection for (i.e. that have a PROJ_COLUMN mapping).
+  function projectableKeys(pitcher) {
+    return (pitcher ? PITCHING_PERCENTILE_STATS : [...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS])
       .map((s) => s.key).filter((k) => PROJ_COLUMN[k]);
+  }
+
+  // True if `row` still has unqualified (blank) cells we can project. Lets the year dropdown
+  // decide whether a season needs the loading skeleton + a projections fetch.
+  function hasUnfilledProjections(row, pitcher) {
+    if (!row || row._enriched) return false;
+    return projectableKeys(pitcher).some((k) => isNaN(parseInt(row[k], 10)));
+  }
+
+  // Fill blank (unqualified) percentile cells in one season's row with computed projections,
+  // mutating yearData in place and tagging projected keys via row._projected. `year` defaults
+  // to the latest season; pass an explicit year to enrich a historical season on demand (the
+  // year dropdown does this lazily). Idempotent via row._enriched, and a no-op (no network)
+  // for fully-qualified seasons, which have no blank cells.
+  async function enrichWithProjections(yearData, mlbId, pitcher, year) {
+    if (!yearData) return;
+    if (year == null) {
+      const years = Object.keys(yearData).sort((a, b) => b - a);
+      if (!years.length) return;
+      year = years[0];
+    }
+    const row = yearData[year];
+    if (!row || row._enriched) return;
+    row._enriched = true;
+    const type = pitcher ? "pitcher" : "batter";
+    const panelKeys = projectableKeys(pitcher);
     const blanks = panelKeys.filter((k) => isNaN(parseInt(row[k], 10)));
     if (!blanks.length) return;
 
@@ -819,15 +836,6 @@
       );
   }
 
-  function mlbEntries(yearData, pitcher) {
-    return Object.keys(yearData)
-      .sort((a, b) => b - a)
-      .map((year) => ({
-        key: `MLB_${year}`, season: year, level: "MLB", source: "MLB", pitcher,
-        label: `${year} (MLB)`, data: yearData[year], fv: null,
-      }));
-  }
-
   // Mix a palette hex toward white by `frac` (0 = unchanged, 1 = white). Used to build the
   // pastel two-tone diagonal hatch Savant draws for projected (unqualified) bars.
   function lightenColor(hex, frac) {
@@ -853,6 +861,10 @@
       const pct = parseInt(data ? data[key] : "", 10);
       const fill = row.querySelector(".ocf-statcast-fill");
       const label = row.querySelector(".ocf-statcast-pct");
+      // Clear any leftover lazy-load skeleton state before (re)rendering this row.
+      row.querySelector(".ocf-statcast-skeleton")?.remove();
+      fill.style.display = "";
+      row.querySelector(".ocf-statcast-label").classList.remove("ocf-statcast-label--loading");
       const isProj = !!(projected && projected.has(key));
       if (isNaN(pct)) {
         fill.style.width = "0%"; fill.style.background = "transparent";
@@ -903,6 +915,30 @@
         }
       });
     }
+  }
+
+  // Put every stat row into the panel's default shimmer-skeleton state (dimmed label, no
+  // "NOT QUALIFIED", a shimmer in the track) while a historical season's projected
+  // percentiles load. renderBars() clears this state when it (re)renders each row.
+  function setRowsLoading(panel) {
+    panel.querySelectorAll(".ocf-statcast-row[data-stat]").forEach((row) => {
+      const fill = row.querySelector(".ocf-statcast-fill");
+      const pct = row.querySelector(".ocf-statcast-pct");
+      const lbl = row.querySelector(".ocf-statcast-label");
+      const track = row.querySelector(".ocf-statcast-track");
+      // Collapse the fill back to 0% so renderBars treats it as "fresh" and re-runs the
+      // grow animation once the projected percentiles land (instead of jumping to width).
+      if (fill) { fill.style.display = "none"; fill.style.width = "0%"; }
+      if (pct) { pct.style.display = "none"; pct.textContent = ""; pct.style.left = "0%"; }
+      row.removeAttribute("title");
+      lbl.classList.remove("ocf-statcast-label--nq", "ocf-statcast-label--qualified");
+      lbl.classList.add("ocf-statcast-label--loading");
+      if (track && !track.querySelector(".ocf-statcast-skeleton")) {
+        const sk = document.createElement("div");
+        sk.className = "ocf-statcast-skeleton";
+        track.appendChild(sk);
+      }
+    });
   }
 
   function renderSourcePanel(panel, entries, selectedKey, playerName, mlbId, ctx) {
@@ -958,8 +994,6 @@
     return entry;
   }
 
-  const SENTINEL = { MLB: "__load_MLB__", MiLB: "__load_MiLB__" };
-
   function wireSourceSelect(panel) {
     const select = panel.querySelector(".ocf-statcast-year");
     if (!select) return;
@@ -974,11 +1008,6 @@
       const o = document.createElement("option");
       o.value = e.key; o.textContent = e.label; select.appendChild(o);
     }
-    const other = source === "MLB" ? "MiLB" : "MLB";
-    const sentinel = document.createElement("option");
-    sentinel.value = SENTINEL[other];
-    sentinel.textContent = other === "MiLB" ? "— Minor Leagues —" : "— MLB —";
-    select.appendChild(sentinel);
     select.value = current;
 
     // default-year vs full-width parity with the MLB panel
@@ -986,12 +1015,8 @@
     panel.dataset.statcastYear = current;
     updatePanelComposition(panel); // Task 7
 
-    select.onchange = async () => {
+    select.onchange = () => {
       const val = select.value;
-      if (val === SENTINEL.MLB || val === SENTINEL.MiLB) {
-        await loadOtherSource(panel, val === SENTINEL.MLB ? "MLB" : "MiLB");
-        return;
-      }
       panel.dataset.selectedKey = val;
       panel.dataset.statcastYear = val;
       const e = entries.find((x) => x.key === val);
@@ -1000,46 +1025,6 @@
       updatePanelComposition(panel); // Task 7
       if (e.source === "MiLB") updateMilbRolling(panel, e);
     };
-  }
-
-  async function loadOtherSource(panel, target) {
-    const reqId = statcastPanelRequestId;
-    const mlbId = panel._mlbId, pitcher = panel._pitcher, playerName = panel._playerName;
-    let entries = panel._entries[target];
-    if (!entries) {
-      if (target === "MiLB") {
-        const psData = await fetchProspectSavant(mlbId);
-        entries = psData ? prospectEntries(psData, pitcher) : [];
-      } else {
-        const yearData = await fetchStatcastPercentiles(mlbId, pitcher ? "pitcher" : "batter");
-        if (yearData) await enrichWithProjections(yearData, mlbId, pitcher);
-        entries = yearData ? mlbEntries(yearData, pitcher) : [];
-      }
-      if (reqId !== statcastPanelRequestId || !document.contains(panel)) return;
-    }
-    if (!entries.length) {
-      // revert select to current source; show transient message
-      const select = panel.querySelector(".ocf-statcast-year");
-      if (select) select.value = panel.dataset.selectedKey;
-      const titleEl = panel.querySelector(".ocf-statcast-title");
-      if (titleEl) {
-        const prev = titleEl.textContent;
-        titleEl.textContent = target === "MiLB" ? "No MiLB Statcast data" : "No MLB Statcast data";
-        setTimeout(() => { if (titleEl.isConnected) titleEl.textContent = prev; }, 2000);
-      }
-      return;
-    }
-    panel.dataset.selectedKey = entries[0].key;
-    renderSourcePanel(panel, entries, entries[0].key, playerName, mlbId, {});
-    appendFutureValue(panel, entries[0]);
-    // Rolling xwOBA chart: MLB uses Savant rolling-thumb; MiLB uses ProspectSavant rolling-data
-    if (target === "MLB" && !pitcher) {
-      const rollingData = await fetchRollingData(mlbId);
-      if (reqId !== statcastPanelRequestId || !document.contains(panel)) return;
-      appendRollingSection(panel, rollingData);
-    } else if (target === "MiLB") {
-      updateMilbRolling(panel, entries[0]);
-    }
   }
 
   function updatePanelComposition(panel) {
@@ -1141,6 +1126,7 @@
             <mat-icon class="mat-icon material-icons" style="font-size:14px;width:14px;height:14px;">open_in_new</mat-icon>
             sc
           </a>
+          <div class="ocf-statcast-load-spinner" style="display:none;"></div>
         </div>
         <div class="ocf-statcast-axis">
           <span class="ocf-statcast-label"></span>
@@ -1177,11 +1163,27 @@
 
     updateBars();
 
+    const spinner = panel.querySelector(".ocf-statcast-load-spinner");
     select.addEventListener("change", () => {
       currentYear = select.value;
-      updateBars();
       panel.dataset.statcastYear = currentYear;
       updatePanelFullWidth(panel);
+      // Historical seasons are enriched lazily (only the default year is filled before first
+      // render). For an unqualified season, show the default loading state (shimmer rows +
+      // top-right spinner) while we fetch its projected percentiles, then render the bars.
+      const year = currentYear;
+      if (hasUnfilledProjections(yearData[year], pitcher)) {
+        if (spinner) spinner.style.display = "";
+        setRowsLoading(panel);
+        enrichWithProjections(yearData, mlbId, pitcher, year).then(() => {
+          if (currentYear !== year || !document.contains(panel)) return;
+          if (spinner) spinner.style.display = "none";
+          updateBars();
+        });
+      } else {
+        if (spinner) spinner.style.display = "none";
+        updateBars();
+      }
     });
   }
 
@@ -1483,7 +1485,7 @@
     return `${months[d.getUTCMonth()]} ${day}${suffix}`;
   }
 
-  function drawRollingChart(canvas, data, tooltip, pitcher) {
+  function drawRollingChart(canvas, data, tooltip, pitcher, animate = true) {
     if (!data || data.length === 0) return;
 
     const container = canvas.parentElement;
@@ -1513,10 +1515,10 @@
     function xPos(i) { return padLeft + (i / (data.length - 1)) * chartW; }
     function yPos(val) { return padTop + (1 - (val - yMin) / (yMax - yMin)) * chartH; }
 
-    // Clear
-    ctx.clearRect(0, 0, cssWidth, cssHeight);
+    // Cancel any reveal animation still running from a prior draw on this canvas
+    if (canvas._rollAnim) { cancelAnimationFrame(canvas._rollAnim); canvas._rollAnim = null; }
 
-    // Gridlines (theme-aware via CSS vars)
+    // Static-layer constants (theme colors, gridlines, LG AVG geometry) - frame-invariant
     const rootStyle = getComputedStyle(document.documentElement);
     const gridLineColor = rootStyle.getPropertyValue("--ocf-grid-line").trim() || "rgba(255,255,255,0.08)";
     const gridLabelColor = rootStyle.getPropertyValue("--ocf-grid-label").trim() || "rgba(255,255,255,0.3)";
@@ -1524,63 +1526,107 @@
     for (let v = Math.ceil(yMin * 10) / 10; v <= yMax; v = Math.round((v + 0.1) * 10) / 10) {
       gridValues.push(v);
     }
-    ctx.font = "9px Poppins, sans-serif";
-    ctx.textAlign = "right";
-    ctx.textBaseline = "middle";
-    for (const gv of gridValues) {
-      const gy = yPos(gv);
-      ctx.strokeStyle = gridLineColor;
-      ctx.setLineDash([3, 3]);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(padLeft, gy);
-      ctx.lineTo(padLeft + chartW, gy);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = gridLabelColor;
-      ctx.fillText(gv.toFixed(3), padLeft - 4, gy);
-    }
-
-    // League average line
     const lgY = yPos(0.320);
-    ctx.strokeStyle = "rgb(20,184,166)";
-    ctx.setLineDash([4, 4]);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(padLeft, lgY);
-    ctx.lineTo(padLeft + chartW, lgY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = "rgb(20,184,166)";
-    ctx.textAlign = "right";
     const tail = data.slice(-Math.max(1, Math.ceil(data.length * 0.1)));
     const aboveCount = tail.filter((d) => d.xwoba >= 0.320).length;
     const lgLabelBelow = aboveCount >= tail.length / 2;
-    ctx.fillText("LG AVG", padLeft + chartW, lgY + (lgLabelBelow ? 11 : -7));
 
-    // Data line - colored segments
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    for (let i = 0; i < data.length - 1; i++) {
-      const x1 = xPos(i);
-      const y1 = yPos(data[i].xwoba);
-      const x2 = xPos(i + 1);
-      const y2 = yPos(data[i + 1].xwoba);
-      const midVal = (data[i].xwoba + data[i + 1].xwoba) / 2;
-      ctx.strokeStyle = getRollingColor(midVal, pitcher);
+    // Gridlines + league-average line, painted beneath the data line each frame
+    function drawStatic() {
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+      ctx.font = "9px Poppins, sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (const gv of gridValues) {
+        const gy = yPos(gv);
+        ctx.strokeStyle = gridLineColor;
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padLeft, gy);
+        ctx.lineTo(padLeft + chartW, gy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = gridLabelColor;
+        ctx.fillText(gv.toFixed(3), padLeft - 4, gy);
+      }
+
+      ctx.strokeStyle = "rgb(20,184,166)";
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.moveTo(padLeft, lgY);
+      ctx.lineTo(padLeft + chartW, lgY);
       ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgb(20,184,166)";
+      ctx.textAlign = "right";
+      ctx.fillText("LG AVG", padLeft + chartW, lgY + (lgLabelBelow ? 11 : -7));
     }
 
-    // Store data for tooltip hit testing
+    // Data line - colored segments revealed left-to-right up to fractional progress p (0..1)
+    function drawLine(p) {
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      const segs = data.length - 1;
+      const edge = p * segs;          // leading-edge position, in segment units
+      const full = Math.floor(edge);  // count of fully-drawn segments
+      const frac = edge - full;       // progress into the partial leading segment
+      for (let i = 0; i < segs; i++) {
+        if (i > full) break;
+        const x1 = xPos(i);
+        const y1 = yPos(data[i].xwoba);
+        let x2, y2, midVal;
+        if (i < full) {
+          x2 = xPos(i + 1);
+          y2 = yPos(data[i + 1].xwoba);
+          midVal = (data[i].xwoba + data[i + 1].xwoba) / 2;
+        } else {
+          // partial leading segment: interpolate toward the next point
+          const ev = data[i].xwoba + (data[i + 1].xwoba - data[i].xwoba) * frac;
+          x2 = x1 + (xPos(i + 1) - x1) * frac;
+          y2 = yPos(ev);
+          midVal = (data[i].xwoba + ev) / 2;
+        }
+        ctx.strokeStyle = getRollingColor(midVal, pitcher);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    }
+
+    function renderFrame(p) {
+      drawStatic();
+      drawLine(p);
+    }
+
+    // Store data for tooltip hit testing (geometry is final from the first frame)
     canvas._rollingData = data;
     canvas._xPos = xPos;
     canvas._yPos = yPos;
     canvas._tooltip = tooltip;
     canvas._padLeft = padLeft;
     canvas._chartW = chartW;
+
+    const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!animate || reduceMotion || data.length < 2) {
+      renderFrame(1);
+      return;
+    }
+
+    // Reveal the line left-to-right, matching the percentile bars' 0.3s grow-in
+    const DURATION = 300;
+    let start = null;
+    function step(ts) {
+      if (start === null) start = ts;
+      const p = Math.min(1, (ts - start) / DURATION);
+      const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
+      renderFrame(eased);
+      canvas._rollAnim = p < 1 ? requestAnimationFrame(step) : null;
+    }
+    canvas._rollAnim = requestAnimationFrame(step);
   }
 
   function handleRollingMouseMove(e) {
@@ -1708,13 +1754,13 @@
     canvasEl._pitcher = pitcher;
     let activeWindow = "plate50";
 
-    function parseAndDraw(key) {
+    function parseAndDraw(key, animate = true) {
       const arr = rollingData[key];
       if (!arr || arr.length === 0) return;
       // API returns rn=1 as most recent - reverse for chronological order
       const sorted = arr.slice().sort((a, b) => b.rn - a.rn);
       const parsed = sorted.map((d) => ({ xwoba: parseFloat(d.xwoba), max_game_date: d.max_game_date }));
-      drawRollingChart(canvasEl, parsed, tooltipEl, pitcher);
+      drawRollingChart(canvasEl, parsed, tooltipEl, pitcher, animate);
     }
 
     parseAndDraw(activeWindow);
@@ -1733,8 +1779,8 @@
     canvasEl.addEventListener("mousemove", handleRollingMouseMove);
     canvasEl.addEventListener("mouseleave", handleRollingMouseLeave);
 
-    // Store redraw function for resize handling
-    section._redraw = () => parseAndDraw(activeWindow);
+    // Store redraw function for resize handling (no reveal animation on resize)
+    section._redraw = () => parseAndDraw(activeWindow, false);
     panel._rollingSection = section;
   }
 
@@ -1772,13 +1818,14 @@
     canvasEl._dot = dotEl;
     canvasEl._pitcher = false;
 
-    const draw = () => drawRollingChart(canvasEl, series, tooltipEl, false);
+    const draw = (animate = true) => drawRollingChart(canvasEl, series, tooltipEl, false, animate);
     draw();
 
     canvasEl.addEventListener("mousemove", handleRollingMouseMove);
     canvasEl.addEventListener("mouseleave", handleRollingMouseLeave);
 
-    section._redraw = draw;
+    // No reveal animation on resize redraws
+    section._redraw = () => draw(false);
     panel._rollingSection = section;
   }
 

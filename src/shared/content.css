@@ -404,7 +404,8 @@ html.ocf-light {
   padding-right: 18px;
 }
 
-.ocf-statcast-label--nq {
+.ocf-statcast-label--nq,
+.ocf-statcast-label--loading {
   opacity: 0.3;
 }
 
@@ -442,6 +443,17 @@ html.ocf-light {
 .ocf-statcast-spinner {
   width: 24px;
   height: 24px;
+  border: 2px solid var(--ocf-spinner-track);
+  border-top-color: var(--ocf-panel-border);
+  border-radius: 50%;
+  animation: ocf-spin 0.7s linear infinite;
+}
+
+/* Small header spinner shown while a historical season's projected percentiles load. */
+.ocf-statcast-load-spinner {
+  width: 12px;
+  height: 12px;
+  flex: none;
   border: 2px solid var(--ocf-spinner-track);
   border-top-color: var(--ocf-panel-border);
   border-radius: 50%;
