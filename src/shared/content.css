@@ -48,6 +48,7 @@
   --ocf-shimmer-2: rgba(255, 255, 255, 0.08);
   --ocf-scrollbar: rgba(255, 255, 255, 0.1);
   --ocf-pct-ring: #1a1d21;
+  --ocf-hatch-line: rgba(0, 0, 0, 0.34);
   --ocf-tooltip-bg: #22262b;
   --ocf-toggle-active-bg: rgba(255, 255, 255, 0.12);
   --ocf-toggle-active-text: #fff;
@@ -96,6 +97,7 @@ html.ocf-light {
   --ocf-shimmer-2: hsl(214 16% 86%);
   --ocf-scrollbar: hsl(0 0% 0% / 0.18);
   --ocf-pct-ring: #ffffff;
+  --ocf-hatch-line: rgba(255, 255, 255, 0.72);
   --ocf-tooltip-bg: hsl(212 11% 24%);
   --ocf-toggle-active-bg: hsl(212 92% 34%);
   --ocf-toggle-active-text: #fff;
@@ -303,7 +305,9 @@ html.ocf-light {
 
 /* Body */
 .ocf-statcast-body {
-  padding: 0 10px 6px;
+  /* top padding gives the first bar's 14px fill room to clear the sticky header's
+     divider — otherwise its ~3.5px overflow gets painted over (clips ~2px off row 1). */
+  padding: 4px 10px 6px;
 }
 
 .ocf-statcast-section-title {

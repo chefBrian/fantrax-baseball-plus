@@ -452,6 +452,36 @@
     { key: "hard_hit_percent", label: "Hard-Hit %" },
   ];
 
+  // --- Projected percentiles for unqualified players ---
+  // For players below the qualification threshold, Savant's percentile-rankings endpoint
+  // returns blanks. We reproduce its projected (hatched) percentiles ourselves:
+  //   percentile = Phi((raw - mu) / sigma) * 100   (inverted for lower-is-better metrics)
+  // raw values come from small leaderboard/statsapi fetches; mu/sigma from the qualified pop.
+  // Maps each panel stat key -> where to read the player's raw value + the mu/sigma column.
+  const PROJ_COLUMN = {
+    xwoba: { src: "expected", field: "woba", popCol: "est_woba" },
+    xba: { src: "expected", field: "avg", popCol: "est_ba" },
+    xslg: { src: "expected", field: "slg", popCol: "est_slg" },
+    exit_velocity: { src: "custom", col: "exit_velocity_avg" },
+    brl_percent: { src: "custom", col: "barrel_batted_rate" },
+    hard_hit_percent: { src: "custom", col: "hard_hit_percent" },
+    k_percent: { src: "custom", col: "k_percent" },
+    bb_percent: { src: "custom", col: "bb_percent" },
+    whiff_percent: { src: "custom", col: "whiff_percent" },
+    chase_percent: { src: "custom", col: "oz_swing_percent" },
+    sprint_speed: { src: "custom", col: "sprint_speed" },
+    fb_velocity: { src: "custom", col: "fastball_avg_speed" },
+    xera: { src: "custom", col: "xera" },
+    bat_speed: { src: "battracking", col: "avg_bat_speed" },
+    squared_up_rate: { src: "battracking", col: "squared_up_per_swing" },
+  };
+
+  // Lower-is-better metrics: the z-score is negated so a low raw value maps to a high pct.
+  const PROJ_INVERT = {
+    batter: new Set(["k_percent", "whiff_percent", "chase_percent"]),
+    pitcher: new Set(["xera", "xba", "xslg", "exit_velocity", "bb_percent", "brl_percent", "hard_hit_percent"]),
+  };
+
   function getPercentileColor(pct) {
     const colors = [
       "#1c4485", "#1f5b9f", "#2a71b2", "#3b88bd", "#4f9cc8",
@@ -524,6 +554,152 @@
       console.warn("[OCF] Statcast fetch failed:", e);
       return null;
     }
+  }
+
+  // Parse a Savant leaderboard CSV into { rows, byId } keyed by player_id (or id).
+  function parseLeaderboardCSV(csvText) {
+    const lines = csvText.trim().split("\n");
+    if (lines.length < 2) return null;
+    const headers = parseCSVLine(lines[0]).map((h) => h.replace(/^\uFEFF/, ""));
+    const idKey = headers.includes("player_id") ? "player_id" : "id";
+    const rows = [];
+    const byId = {};
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCSVLine(lines[i]);
+      const row = {};
+      headers.forEach((h, idx) => { row[h] = values[idx] != null ? values[idx] : ""; });
+      rows.push(row);
+      byId[String(row[idKey])] = row;
+    }
+    return { rows, byId };
+  }
+
+  // Standard normal CDF via an Abramowitz & Stegun erf approximation (~1e-7 accuracy).
+  function normCdf(z) {
+    const sign = z < 0 ? -1 : 1;
+    const x = Math.abs(z) / Math.SQRT2;
+    const t = 1 / (1 + 0.3275911 * x);
+    const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+    return 0.5 * (1 + sign * y);
+  }
+
+  function computeMuSigma(rows, col, mask) {
+    const vals = [];
+    for (const r of rows) {
+      const id = String(r.player_id != null ? r.player_id : r.id);
+      if (mask && !mask.has(id)) continue;
+      const v = parseFloat(r[col]);
+      if (!isNaN(v)) vals.push(v);
+    }
+    if (vals.length < 2) return null;
+    const mu = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mu) * (b - mu), 0) / vals.length);
+    return sd > 0 ? { mu, sd } : null;
+  }
+
+  const scLeaderboardCache = new Map();
+  const expectedStatsCache = new Map();
+  const projStatsCache = new Map();
+
+  async function fetchScLeaderboard(board, type, year) {
+    const cacheKey = `${board}-${type}-${year}`;
+    if (scLeaderboardCache.has(cacheKey)) return scLeaderboardCache.get(cacheKey);
+    let parsed = null;
+    try {
+      const result = await browser.runtime.sendMessage({
+        type: "ocf-fetch-sc-leaderboard", board, playerType: type, year: String(year),
+      });
+      if (result && result.ok && result.data) parsed = parseLeaderboardCSV(result.data);
+    } catch (e) {
+      console.warn("[OCF] Savant leaderboard fetch failed:", e);
+    }
+    scLeaderboardCache.set(cacheKey, parsed);
+    return parsed;
+  }
+
+  async function fetchExpectedStats(mlbId, type, year) {
+    const cacheKey = `${mlbId}-${type}-${year}`;
+    if (expectedStatsCache.has(cacheKey)) return expectedStatsCache.get(cacheKey);
+    let value = null;
+    try {
+      const result = await browser.runtime.sendMessage({
+        type: "ocf-fetch-expected-stats", playerId: mlbId, playerType: type, year: String(year),
+      });
+      if (result && result.ok) value = result.data;
+    } catch (e) {
+      console.warn("[OCF] Expected-stats fetch failed:", e);
+    }
+    expectedStatsCache.set(cacheKey, value);
+    return value;
+  }
+
+  // Shared per-(type, season) mu/sigma + the raw-value leaderboards (cached once per session).
+  async function getProjStats(type, year) {
+    const cacheKey = `${type}-${year}`;
+    if (projStatsCache.has(cacheKey)) return projStatsCache.get(cacheKey);
+    const [expBoard, custom, bat] = await Promise.all([
+      fetchScLeaderboard("expected", type, year),
+      fetchScLeaderboard("custom", type, year),
+      type === "batter" ? fetchScLeaderboard("bat-tracking", type, year) : Promise.resolve(null),
+    ]);
+    if (!expBoard || !custom) { projStatsCache.set(cacheKey, null); return null; }
+    const qIds = new Set(expBoard.rows.map((r) => String(r.player_id)));
+    const stats = {};
+    for (const [key, cfg] of Object.entries(PROJ_COLUMN)) {
+      let ms;
+      if (cfg.src === "expected") ms = computeMuSigma(expBoard.rows, cfg.popCol, null);
+      else if (cfg.src === "battracking") ms = bat ? computeMuSigma(bat.rows, cfg.col, qIds) : null;
+      else ms = computeMuSigma(custom.rows, cfg.col, qIds);
+      if (ms) stats[key] = ms;
+    }
+    const result = { stats, custom, bat };
+    projStatsCache.set(cacheKey, result);
+    return result;
+  }
+
+  // Fill blank (unqualified) percentile cells in the latest season's row with computed
+  // projections, mutating yearData in place and tagging projected keys via row._projected.
+  // No-op (and no network) for fully-qualified players, who have no blank cells.
+  async function enrichWithProjections(yearData, mlbId, pitcher) {
+    if (!yearData) return;
+    const years = Object.keys(yearData).sort((a, b) => b - a);
+    if (!years.length) return;
+    const year = years[0];
+    const row = yearData[year];
+    if (!row) return;
+    const type = pitcher ? "pitcher" : "batter";
+    const panelKeys = (pitcher ? PITCHING_PERCENTILE_STATS : [...BATTING_PERCENTILE_STATS, ...SPEED_PERCENTILE_STATS])
+      .map((s) => s.key).filter((k) => PROJ_COLUMN[k]);
+    const blanks = panelKeys.filter((k) => isNaN(parseInt(row[k], 10)));
+    if (!blanks.length) return;
+
+    const needExpected = blanks.some((k) => PROJ_COLUMN[k].src === "expected");
+    const [proj, exp] = await Promise.all([
+      getProjStats(type, year),
+      needExpected ? fetchExpectedStats(mlbId, type, year) : Promise.resolve(null),
+    ]);
+    if (!proj) return;
+
+    const cRow = proj.custom.byId[String(mlbId)];
+    const bRow = proj.bat ? proj.bat.byId[String(mlbId)] : null;
+    const invert = PROJ_INVERT[type];
+    const projected = row._projected instanceof Set ? row._projected : new Set();
+    for (const key of blanks) {
+      const cfg = PROJ_COLUMN[key];
+      const ms = proj.stats[key];
+      if (!ms) continue;
+      let raw;
+      if (cfg.src === "expected") raw = exp ? exp[cfg.field] : undefined;
+      else if (cfg.src === "battracking") raw = bRow ? parseFloat(bRow[cfg.col]) : undefined;
+      else raw = cRow ? parseFloat(cRow[cfg.col]) : undefined;
+      if (raw == null || isNaN(raw)) continue;
+      let z = (raw - ms.mu) / ms.sd;
+      if (invert.has(key)) z = -z;
+      const pct = Math.max(0, Math.min(100, Math.round(normCdf(z) * 100)));
+      row[key] = String(pct);
+      projected.add(key);
+    }
+    if (projected.size) row._projected = projected;
   }
 
   const prospectCache = new Map();
@@ -652,31 +828,67 @@
       }));
   }
 
+  // Mix a palette hex toward white by `frac` (0 = unchanged, 1 = white). Used to build the
+  // pastel two-tone diagonal hatch Savant draws for projected (unqualified) bars.
+  function lightenColor(hex, frac) {
+    const m = hex.replace("#", "");
+    const r = parseInt(m.slice(0, 2), 16), g = parseInt(m.slice(2, 4), 16), b = parseInt(m.slice(4, 6), 16);
+    const mix = (c) => Math.round(c + (255 - c) * frac);
+    return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+  }
+
+  // Hatch for projected (unqualified) bars: thin diagonal lines in --ocf-hatch-line, which is
+  // a translucent dark on dark theme and translucent white on light theme (so the hatch reads
+  // like Savant's "cut to the background" look in both). Paired with background-size below, the
+  // pattern is pinned to a fixed pixel grid so every line is perfectly, evenly spaced — a plain
+  // repeating-linear-gradient drifts off-grid at this scale and looks raggedly hand-drawn.
+  const PROJECTED_HATCH = "repeating-linear-gradient(-45deg, var(--ocf-hatch-line) 0, var(--ocf-hatch-line) 1px, transparent 1px, transparent 50%)";
+  const PROJECTED_HATCH_SIZE = "6px 6px";
+
   function renderBars(panel, data) {
     const deferred = [];
+    const projected = data && data._projected instanceof Set ? data._projected : null;
     panel.querySelectorAll(".ocf-statcast-row[data-stat]").forEach((row) => {
       const key = row.dataset.stat;
       const pct = parseInt(data ? data[key] : "", 10);
       const fill = row.querySelector(".ocf-statcast-fill");
       const label = row.querySelector(".ocf-statcast-pct");
+      const isProj = !!(projected && projected.has(key));
       if (isNaN(pct)) {
         fill.style.width = "0%"; fill.style.background = "transparent";
+        fill.style.backgroundImage = "none";
         label.textContent = ""; label.style.display = "none";
+        row.removeAttribute("title");
         const lbl = row.querySelector(".ocf-statcast-label");
         lbl.classList.add("ocf-statcast-label--nq");
         lbl.classList.remove("ocf-statcast-label--qualified");
       } else {
-        const wasHidden = label.style.display === "none";
         const color = getPercentileColor(pct);
-        label.textContent = pct; label.style.background = color;
-        label.style.textShadow = pct >= 35 && pct <= 60 ? "0 0 2px rgba(0,0,0,0.9)" : "none";
-        if (wasHidden) {
-          label.style.left = "0%"; label.style.display = "";
-          fill.style.width = "0%"; fill.style.background = color;
-          deferred.push({ fill, label, pct });
+        const fresh = !fill.style.width || fill.style.width === "0%";
+        // Projected rows mirror Savant: hatched bar, no percentile bubble (the value lives
+        // in the hover tooltip instead). Qualified rows keep the solid bubble.
+        if (isProj) {
+          label.style.display = "none"; label.textContent = "";
+          row.title = `Projected ${pct}th percentile (below qualification threshold)`;
         } else {
-          fill.style.width = Math.max(pct, 6) + "%"; fill.style.background = color;
-          label.style.left = Math.max(pct, 4) + "%";
+          label.style.display = ""; label.textContent = pct; label.style.background = color;
+          label.style.textShadow = pct >= 35 && pct <= 60 ? "0 0 2px rgba(0,0,0,0.9)" : "none";
+          row.removeAttribute("title");
+        }
+        if (isProj) {
+          fill.style.background = lightenColor(color, 0.4); // pastel base under the hatch
+          fill.style.backgroundImage = PROJECTED_HATCH;
+          fill.style.backgroundSize = PROJECTED_HATCH_SIZE;
+        } else {
+          fill.style.background = color; // shorthand resets background-image + size
+        }
+        if (fresh) {
+          fill.style.width = "0%";
+          if (!isProj) label.style.left = "0%";
+          deferred.push({ fill, label, pct, isProj });
+        } else {
+          fill.style.width = Math.max(pct, 6) + "%";
+          if (!isProj) label.style.left = Math.max(pct, 4) + "%";
         }
         const lbl = row.querySelector(".ocf-statcast-label");
         lbl.classList.remove("ocf-statcast-label--nq");
@@ -685,9 +897,9 @@
     });
     if (deferred.length) {
       requestAnimationFrame(() => {
-        for (const { fill, label, pct } of deferred) {
+        for (const { fill, label, pct, isProj } of deferred) {
           fill.style.width = Math.max(pct, 6) + "%";
-          label.style.left = Math.max(pct, 4) + "%";
+          if (!isProj) label.style.left = Math.max(pct, 4) + "%";
         }
       });
     }
@@ -800,6 +1012,7 @@
         entries = psData ? prospectEntries(psData, pitcher) : [];
       } else {
         const yearData = await fetchStatcastPercentiles(mlbId, pitcher ? "pitcher" : "batter");
+        if (yearData) await enrichWithProjections(yearData, mlbId, pitcher);
         entries = yearData ? mlbEntries(yearData, pitcher) : [];
       }
       if (reqId !== statcastPanelRequestId || !document.contains(panel)) return;
@@ -1153,6 +1366,11 @@
     ]);
     if (requestId !== statcastPanelRequestId || !document.contains(panel)) return;
     if (!yearData) { showStatcastNoData(panel, isMinors); return; }
+
+    // Fill projected (hatched) percentiles for unqualified players before first render.
+    // No-op for qualified players (no blank cells -> no extra network).
+    await enrichWithProjections(yearData, mlbId, pitcher);
+    if (requestId !== statcastPanelRequestId || !document.contains(panel)) return;
 
     populateStatcastPanel(panel, yearData, playerName, mlbId, pitcher);
 
@@ -1712,6 +1930,7 @@
         return;
       }
 
+      const animations = [];
       for (const metric of FANGRAPHS_METRICS) {
         const value = player[metric.key];
         if (value == null) continue;
@@ -1721,19 +1940,35 @@
         const pct = rankInfo ? Math.round((1 - (rankInfo.rank - 1) / (rankInfo.total - 1)) * 100) : 50;
         const color = getPercentileColor(pct);
         const barPct = Math.max(pct, 6);
+        const labelLeft = Math.max(pct, 4);
         const displayValue = metric.inverted ? value.toFixed(2) : Math.round(value);
 
         const row = document.createElement("div");
         row.className = "ocf-fangraphs-row";
+        // Start collapsed and grow in via rAF so the .ocf-statcast-fill width transition
+        // fires, matching the Statcast bars' load-in animation.
         row.innerHTML = `
           <span class="ocf-statcast-label ocf-statcast-label--qualified">${metric.label}</span>
           <div class="ocf-statcast-track">
-            <div class="ocf-statcast-fill" style="width:${barPct}%;background:${color}"></div>
-            <span class="ocf-statcast-pct" style="left:${Math.max(pct, 4)}%;background:${color}${pct >= 35 && pct <= 60 ? ";text-shadow:0 0 2px rgba(0,0,0,0.9)" : ""}">${pct}</span>
+            <div class="ocf-statcast-fill" style="width:0%;background:${color}"></div>
+            <span class="ocf-statcast-pct" style="left:0%;background:${color}${pct >= 35 && pct <= 60 ? ";text-shadow:0 0 2px rgba(0,0,0,0.9)" : ""}">${pct}</span>
           </div>
           <span class="ocf-fangraphs-value-right">${displayValue}</span>
         `;
         body.appendChild(row);
+        animations.push({
+          fill: row.querySelector(".ocf-statcast-fill"),
+          label: row.querySelector(".ocf-statcast-pct"),
+          barPct, labelLeft,
+        });
+      }
+      if (animations.length) {
+        requestAnimationFrame(() => {
+          for (const { fill, label, barPct, labelLeft } of animations) {
+            fill.style.width = barPct + "%";
+            label.style.left = labelLeft + "%";
+          }
+        });
       }
     }
 

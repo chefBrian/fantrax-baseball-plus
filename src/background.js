@@ -253,6 +253,57 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // Per-player expected stats (xwOBA/xBA/xSLG, or opponent expected stats for pitchers).
+  // statsapi has no qualification gate, so this works for unqualified players too.
+  if (msg.type === "ocf-fetch-expected-stats") {
+    const group = msg.playerType === "pitcher" ? "pitching" : "hitting";
+    const url = `https://statsapi.mlb.com/api/v1/people/${encodeURIComponent(msg.playerId)}/stats?stats=expectedStatistics&group=${group}&season=${encodeURIComponent(msg.year)}`;
+    fetch(url, { signal: AbortSignal.timeout(8000) })
+      .then((r) => {
+        if (!r.ok) throw new Error(`statsapi ${r.status}`);
+        return r.json();
+      })
+      .then((d) => {
+        const splits = d?.stats?.[0]?.splits;
+        if (!Array.isArray(splits) || splits.length === 0) {
+          sendResponse({ ok: true, data: null });
+          return;
+        }
+        const stat = splits[0].stat || {};
+        const num = (s) => { const v = parseFloat(s); return isNaN(v) ? null : v; };
+        sendResponse({ ok: true, data: { woba: num(stat.woba), avg: num(stat.avg), slg: num(stat.slg) } });
+      })
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
+
+  // Shared season-wide Savant leaderboards used to compute projected percentiles for
+  // unqualified players. `min=0`/`minSwings=0` include sub-threshold players' raw values;
+  // the qualified `expected_statistics` board supplies mu/sigma + the qualified id set.
+  if (msg.type === "ocf-fetch-sc-leaderboard") {
+    const year = encodeURIComponent(msg.year);
+    const type = msg.playerType === "pitcher" ? "pitcher" : "batter";
+    let url;
+    if (msg.board === "bat-tracking") {
+      url = `https://baseballsavant.mlb.com/leaderboard/bat-tracking?minSwings=0&minGroupSwings=1&seasonStart=${year}&seasonEnd=${year}&type=${type}&csv=true`;
+    } else if (msg.board === "expected") {
+      url = `https://baseballsavant.mlb.com/leaderboard/expected_statistics?type=${type}&year=${year}&position=&team=&filter=&csv=true`;
+    } else {
+      const selections = type === "pitcher"
+        ? "est_woba,est_ba,est_slg,xera,exit_velocity_avg,barrel_batted_rate,hard_hit_percent,k_percent,bb_percent,whiff_percent,oz_swing_percent,fastball_avg_speed,p_formatted_ip"
+        : "est_woba,est_ba,est_slg,exit_velocity_avg,barrel_batted_rate,hard_hit_percent,k_percent,bb_percent,whiff_percent,oz_swing_percent,sprint_speed,pa";
+      url = `https://baseballsavant.mlb.com/leaderboard/custom?year=${year}&type=${type}&filter=&min=0&csv=true&selections=${selections}`;
+    }
+    fetch(url, { signal: AbortSignal.timeout(15000) })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Savant ${r.status}`);
+        return r.text();
+      })
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
+
   if (msg.type === "ocf-fetch-prospect-savant") {
     const url = `https://oriolebird.pythonanywhere.com/player/${encodeURIComponent(msg.playerId)}`;
     fetch(url, { signal: AbortSignal.timeout(8000) })
