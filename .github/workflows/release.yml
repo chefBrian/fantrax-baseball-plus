@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -31,11 +31,48 @@ jobs:
           files: |
             dist/*.zip
 
+      # Hand the built zips + unpacked dirs to the per-store jobs so they don't rebuild.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  # The three store jobs run in parallel and are independent: one failing (e.g. Edge
+  # rejecting a publish while a prior submission is still in review) does not stop or
+  # fail the others, and the run summary shows exactly which store failed.
+  firefox:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
       - name: Submit to Firefox AMO
         run: npx web-ext sign --channel=listed --source-dir=dist/firefox/
         env:
           WEB_EXT_API_KEY: ${{ secrets.FIREFOX_JWT_ISSUER }}
           WEB_EXT_API_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
+
+  chrome:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
       - name: Submit to Chrome Web Store
         run: npx chrome-webstore-upload-cli@3 upload --source dist/fantrax-baseball-plus-chrome-v*.zip --auto-publish
@@ -44,6 +81,15 @@ jobs:
           CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+
+  edge:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
       - name: Resolve Edge zip path
         id: edge_zip

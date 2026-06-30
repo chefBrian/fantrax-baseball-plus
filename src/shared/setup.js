@@ -2,6 +2,10 @@ const browser = globalThis.browser || globalThis.chrome;
 
 // Welcome flow always asks for everything - users can fine-tune later by
 // disabling features in the popup or revoking individual hosts in about:addons.
+// Keep in sync with FEATURE_ORIGINS in background.js / popup.js — this is the union of
+// every feature's hosts. A host missing here is never requested on the welcome page, so on
+// Firefox (host_permissions are optional) it stays ungranted: the perm banner never clears
+// and that feature's fetches CORS-fail.
 const ALL_ORIGINS = [
   "*://*.fantrax.com/*",
   "https://statsapi.mlb.com/*",
@@ -9,6 +13,7 @@ const ALL_ORIGINS = [
   "https://fastball-gateway.mlb.com/*",
   "https://fastball-clips.mlb.com/*",
   "https://www.fangraphs.com/*",
+  "https://oriolebird.pythonanywhere.com/*",
 ];
 
 async function getRequestOrigins() {
