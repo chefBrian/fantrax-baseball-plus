@@ -131,14 +131,8 @@
       this extension needs access to a few sites. Click below to grant all
       required permissions in one step.
     </p>
-    <ul class="hosts">
-      <li><span>Fantrax</span><code>www.fantrax.com</code></li>
-      <li><span>MLB Film Room</span><code>fastball-gateway.mlb.com</code></li>
-      <li><span>MLB Stats</span><code>statsapi.mlb.com</code></li>
-      <li><span>MLB Video clips</span><code>fastball-clips.mlb.com</code></li>
-      <li><span>Baseball Savant</span><code>baseballsavant.mlb.com</code></li>
-      <li><span>FanGraphs</span><code>www.fangraphs.com</code></li>
-    </ul>
+    <!-- Rows are rendered by setup.js from its HOSTS list (single source of truth). -->
+    <ul class="hosts"></ul>
     <button id="grantBtn" type="button">Grant access</button>
     <div class="status" id="status"></div>
     <div class="footnote">
