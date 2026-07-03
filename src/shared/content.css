@@ -1041,6 +1041,10 @@ html.ocf-light {
 }
 .ocf-perm-banner__close:hover { color: #fff; }
 
+.ocf-status-banner { border-color: #f59e0b; }
+.ocf-status-banner .ocf-perm-banner__msg strong { color: #f59e0b; }
+a.ocf-perm-banner__btn { text-decoration: none; display: inline-block; }
+
 .ocf-ps-fv-grade {
   font-size: 11px;
   font-weight: 700;

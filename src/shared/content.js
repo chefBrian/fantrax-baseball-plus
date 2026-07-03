@@ -2916,11 +2916,24 @@
     processModals();
   }
 
+  // Resilience layer first, isolated: a config failure must never block
+  // feature init, and a feature-init failure must never block the banner.
+  const configResponse = requestConfig(false);
+  configResponse.then((res) => {
+    try { maybeShowStatusBanner(res); } catch (e) {}
+  });
+  // Don't let a slow first-ever config fetch delay injection by more than 3s.
+  const configFast = Promise.race([
+    configResponse,
+    new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+  ]);
+
   // Load feature settings then inject
-  browser.storage.sync.get({ bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true, prospectSavantPanel: true, themeOverride: "auto" }).then((stored) => {
+  browser.storage.sync.get({ bbref: true, statcastIcon: true, statcastPanel: true, video: true, liveGame: true, fangraphsPanel: true, prospectSavantPanel: true, themeOverride: "auto" }).then(async (stored) => {
     Object.assign(features, stored);
     themeOverride = stored.themeOverride || "auto";
     reconcileTheme();
+    try { applyKillSwitches((await configFast)?.config); } catch (e) {}
     scanAndInject();
   });
 
@@ -3093,5 +3106,111 @@
     }
   } catch {
     maybeShowPermBanner();
+  }
+
+  // --- Resilience layer: remote config, status banner (docs/update-resilience-design.md) ---
+
+  const STORE_URLS = {
+    chrome: "https://chromewebstore.google.com/detail/fantraxbaseball+/andhmhfiodkbfmjiencoiglmdpolhomc",
+    firefox: "https://addons.mozilla.org/en-US/firefox/addon/fantraxbaseball/",
+    edge: "https://microsoftedge.microsoft.com/addons/detail/fantraxbaseball/khbejbbnadofdhbnkppnedbdeabhfbhi",
+  };
+  const STATUS_BANNER_DISMISS_KEY = "ocfStatusBannerDismissed";
+
+  function requestConfig(force) {
+    try {
+      return browser.runtime
+        .sendMessage({ type: "ocf-get-config", force: !!force })
+        .then((r) => (r && r.ok ? r : null))
+        .catch(() => null);
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+
+  function applyKillSwitches(config) {
+    if (!config?.killSwitches) return;
+    for (const key of Object.keys(config.killSwitches)) {
+      if (key in features) features[key] = false;
+    }
+  }
+
+  function maybeShowStatusBanner(res) {
+    if (!res) return;
+    const { config, meta } = res;
+    const parts = [];
+    if (meta.statusApplies) {
+      parts.push(
+        config.status.message ||
+          "Fantrax may have changed their site - some features may not work. A fix is usually out within a day."
+      );
+    }
+    if (meta.updateAvailable) {
+      parts.push(
+        meta.browserKey === "firefox"
+          ? `A fix (v${meta.latestVersion}) is live - open about:addons, click the gear icon, then "Check for Updates".`
+          : `An update (v${meta.latestVersion}) will install automatically shortly.`
+      );
+    }
+    if (!parts.length) return;
+    showNoticeBanner(parts.join(" "), meta.updateAvailable ? STORE_URLS[meta.browserKey] : null);
+  }
+
+  function showNoticeBanner(text, storeUrl) {
+    const dismissKey = STATUS_BANNER_DISMISS_KEY + ":" + text;
+    try { if (sessionStorage.getItem(dismissKey) === "1") return; } catch {}
+    if (!document.body) return;
+    document.querySelector(".ocf-status-banner")?.remove();
+
+    const banner = document.createElement("div");
+    banner.className = "ocf-perm-banner ocf-status-banner";
+
+    const msg = document.createElement("span");
+    msg.className = "ocf-perm-banner__msg";
+    const name = document.createElement("strong");
+    name.textContent = "FantraxBaseball+: ";
+    msg.appendChild(name);
+    // Config-supplied text is plain text only - textContent, never innerHTML.
+    msg.appendChild(document.createTextNode(text));
+    banner.appendChild(msg);
+
+    if (storeUrl) {
+      // CTA links come exclusively from the hardcoded STORE_URLS map.
+      const link = document.createElement("a");
+      link.className = "ocf-perm-banner__btn";
+      link.textContent = "Open store page";
+      link.href = storeUrl;
+      link.target = "_blank";
+      link.rel = "noopener";
+      banner.appendChild(link);
+    }
+
+    const close = document.createElement("button");
+    close.className = "ocf-perm-banner__close";
+    close.type = "button";
+    close.setAttribute("aria-label", "Dismiss");
+    close.textContent = "×";
+    close.addEventListener("click", () => {
+      banner.remove();
+      try { sessionStorage.setItem(dismissKey, "1"); } catch {}
+    });
+    banner.appendChild(close);
+    document.body.appendChild(banner);
+  }
+
+  function showOrphanNote() {
+    if (!document.body || document.querySelector(".ocf-status-banner")) return;
+    const banner = document.createElement("div");
+    banner.className = "ocf-perm-banner ocf-status-banner";
+    const msg = document.createElement("span");
+    msg.className = "ocf-perm-banner__msg";
+    msg.textContent = "FantraxBaseball+ was updated - refresh this page to keep using it.";
+    const btn = document.createElement("button");
+    btn.className = "ocf-perm-banner__btn";
+    btn.type = "button";
+    btn.textContent = "Refresh";
+    btn.addEventListener("click", () => location.reload());
+    banner.append(msg, btn);
+    document.body.appendChild(banner);
   }
 })();
