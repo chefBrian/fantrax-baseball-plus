@@ -2970,6 +2970,7 @@
   }
 
   function watchOverlayForModal(overlay) {
+    scheduleAnchorCheck(overlay);
     function tryShowSkeleton() {
       if (features.statcastPanel && isPlayerModal(overlay) && !document.querySelector(".ocf-statcast-panel")) {
         showStatcastSkeleton(overlay);
@@ -3212,5 +3213,61 @@
     btn.addEventListener("click", () => location.reload());
     banner.append(msg, btn);
     document.body.appendChild(banner);
+  }
+
+  // --- Breakage self-detection (design doc, Component 2) ---
+  // Count dialogs the user opened from a player row where our anchors never
+  // appear. Detection deliberately avoids Fantrax's own class names: the
+  // click-correlation uses our PROCESSED_ATTR marker and the dialog signal is
+  // Angular Material's mat-dialog-container, neither of which Fantrax renames.
+
+  let expectPlayerModalUntil = 0;
+  let anchorMissCount = 0;
+
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (e.target?.closest?.(`[${PROCESSED_ATTR}]`)) {
+        expectPlayerModalUntil = Date.now() + 3000;
+      }
+    },
+    true
+  );
+
+  function scheduleAnchorCheck(overlay) {
+    if (!browser.runtime?.id) {
+      // Extension was updated/reloaded under this page - context is orphaned.
+      showOrphanNote();
+      return;
+    }
+    if (Date.now() >= expectPlayerModalUntil) return; // not opened from a player row
+    setTimeout(() => {
+      if (!overlay.isConnected) return; // dialog closed before we could judge
+      if (isPlayerModal(overlay)) {
+        anchorMissCount = 0;
+        return;
+      }
+      if (!overlay.querySelector("mat-dialog-container")) return; // tooltip/menu, not a dialog
+      anchorMissCount += 1;
+      if (anchorMissCount >= 3) {
+        anchorMissCount = 0;
+        onBreakageDetected();
+      }
+    }, 4000);
+  }
+
+  function onBreakageDetected() {
+    // Force a config revalidation (TTL bypass). If an incident config is
+    // already live its message wins; otherwise show the generic notice.
+    requestConfig(true).then((res) => {
+      if (res && (res.meta.statusApplies || res.meta.updateAvailable)) {
+        maybeShowStatusBanner(res);
+      } else {
+        showNoticeBanner(
+          "can't find its place on the page - Fantrax may have changed their site. A fix is usually out within a day.",
+          null
+        );
+      }
+    });
   }
 })();
