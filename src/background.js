@@ -1,5 +1,12 @@
 const browser = globalThis.browser || globalThis.chrome;
 
+// Chrome MV3 service worker: load shared config logic synchronously.
+// Firefox's event page loads it via the manifest "scripts" array instead
+// (importScripts does not exist there, hence the guard).
+if (typeof importScripts === "function") {
+  importScripts("config-lib.js");
+}
+
 const BASE_ORIGINS = ["*://*.fantrax.com/*"];
 const FEATURE_ORIGINS = {
   bbref: ["https://statsapi.mlb.com/*"],

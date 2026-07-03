@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "latestVersion": { "chrome": "2.0.2", "firefox": "2.0.2", "edge": "2.0.2" },
+  "status": { "level": "ok", "message": "", "maxAffectedVersion": "", "fixedInVersion": "" },
+  "killSwitches": {},
+  "selectors": {}
+}
