@@ -7,6 +7,10 @@
   const THEME_STORAGE_KEY = "ocfTheme";
   let themeOverride = "auto";
 
+  // Breakage self-detection state (consumed by the resilience layer at the bottom).
+  let expectPlayerModalUntil = 0;
+  let anchorMissCount = 0;
+
   function detectFantraxTheme() {
     const bg = getComputedStyle(document.documentElement).backgroundColor;
     const m = bg && bg.match(/\d+(?:\.\d+)?/g);
@@ -2799,6 +2803,10 @@
       const scorerInfo = nameLink.closest(".scorer__info");
       if (!scorerInfo) continue;
 
+      // Mark this player-name link so the breakage detector (resilience layer)
+      // can tell a dialog was opened from a real player row.
+      nameLink.setAttribute("data-ocf-row", "");
+
       const scorerEl = nameLink.closest("scorer") || nameLink.closest(".scorer");
       const positionText = scorerEl ? getPositionFromScorer(scorerEl) : null;
       const teamAbbr = scorerEl ? getTeamFromScorer(scorerEl) : null;
@@ -3218,16 +3226,14 @@
   // --- Breakage self-detection (design doc, Component 2) ---
   // Count dialogs the user opened from a player row where our anchors never
   // appear. Detection deliberately avoids Fantrax's own class names: the
-  // click-correlation uses our PROCESSED_ATTR marker and the dialog signal is
-  // Angular Material's mat-dialog-container, neither of which Fantrax renames.
-
-  let expectPlayerModalUntil = 0;
-  let anchorMissCount = 0;
+  // click-correlation uses our data-ocf-row marker (set on processed player-name
+  // links in processTablePlayers) and the dialog signal is Angular Material's
+  // mat-dialog-container, neither of which Fantrax renames.
 
   document.addEventListener(
     "click",
     (e) => {
-      if (e.target?.closest?.(`[${PROCESSED_ATTR}]`)) {
+      if (e.target?.closest?.("[data-ocf-row]")) {
         expectPlayerModalUntil = Date.now() + 3000;
       }
     },
