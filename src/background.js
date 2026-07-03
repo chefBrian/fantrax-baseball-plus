@@ -102,6 +102,105 @@ browser.storage?.onChanged?.addListener((_changes, area) => {
 });
 refreshActionBadge();
 
+// --- Remote config service (docs/update-resilience-design.md, Component 1) ---
+
+const CONFIG_URL =
+  "https://raw.githubusercontent.com/chefBrian/fantrax-baseball-plus/main/config/remote-config.json";
+const FORCED_FETCH_FLOOR_MS = 5 * 60 * 1000;
+const {
+  validateConfig, configTtlMs, compareVersions,
+  browserKeyFrom, pickLatest, statusApplies,
+} = globalThis.OCFConfigLib;
+
+async function getConfig(force) {
+  const { ocfConfigCache, ocfLastForcedFetch } = await browser.storage.local.get({
+    ocfConfigCache: null,
+    ocfLastForcedFetch: 0,
+  });
+
+  if (!ocfConfigCache) {
+    // First run: block on the network once; fall back to the packaged copy.
+    const fresh = await revalidateConfig();
+    if (fresh) return fresh;
+    return (await loadBundledConfig()) || validateConfig({ schemaVersion: 1 });
+  }
+
+  const { config, fetchedAt } = ocfConfigCache;
+  const stale = Date.now() - fetchedAt > configTtlMs(config);
+  const forceAllowed = force && Date.now() - ocfLastForcedFetch > FORCED_FETCH_FLOOR_MS;
+  if (forceAllowed) {
+    browser.storage.local.set({ ocfLastForcedFetch: Date.now() });
+  }
+  if (stale || forceAllowed) {
+    revalidateConfig(); // stale-while-revalidate: serve the cache, refresh in background
+  }
+  return config;
+}
+
+async function revalidateConfig() {
+  const config = await fetchRemoteConfig();
+  if (!config) return null;
+  await browser.storage.local.set({ ocfConfigCache: { config, fetchedAt: Date.now() } });
+  maybeRequestUpdateCheck(config);
+  return config;
+}
+
+async function fetchRemoteConfig() {
+  try {
+    const { ocfConfigUrlOverride } = await browser.storage.local.get({ ocfConfigUrlOverride: null });
+    const url = ocfConfigUrlOverride || CONFIG_URL;
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000), cache: "no-cache" });
+    if (!r.ok) return null;
+    return validateConfig(await r.json());
+  } catch {
+    return null;
+  }
+}
+
+async function loadBundledConfig() {
+  try {
+    const r = await fetch(browser.runtime.getURL("remote-config.json"));
+    return validateConfig(await r.json());
+  } catch {
+    return null;
+  }
+}
+
+function maybeRequestUpdateCheck(config) {
+  try {
+    if (typeof browser.runtime.requestUpdateCheck !== "function") return; // Firefox
+    const latest = pickLatest(config, detectBrowserKey());
+    if (!latest) return;
+    if (compareVersions(latest, browser.runtime.getManifest().version) <= 0) return;
+    // Fire and forget: "throttled" / "no_update" need no handling. Once the
+    // download completes, MV3 applies it when this worker next idles out -
+    // no runtime.reload() machinery (see design doc, Component 3).
+    const p = browser.runtime.requestUpdateCheck(() => void browser.runtime.lastError);
+    if (p?.catch) p.catch(() => {});
+  } catch {
+    // best-effort
+  }
+}
+
+function detectBrowserKey() {
+  return browserKeyFrom(
+    typeof browser.runtime.getBrowserInfo === "function",
+    globalThis.navigator?.userAgentData?.brands || []
+  );
+}
+
+function refreshUninstallUrl() {
+  try {
+    const v = browser.runtime.getManifest().version;
+    const url = `https://chefbrian.github.io/fantrax-baseball-plus/uninstall.html?v=${encodeURIComponent(v)}&b=${detectBrowserKey()}`;
+    const p = browser.runtime.setUninstallURL(url);
+    if (p?.catch) p.catch(() => {});
+  } catch {
+    // best-effort
+  }
+}
+refreshUninstallUrl();
+
 // Firefox: rewrite Origin/Referer on FanGraphs requests to avoid Cloudflare challenge
 // (Chrome handles this via declarativeNetRequest rules.json)
 if (typeof browser.webRequest !== "undefined") {
@@ -120,6 +219,31 @@ if (typeof browser.webRequest !== "undefined") {
 }
 
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "ocf-get-config") {
+    (async () => {
+      try {
+        const config = await getConfig(!!msg.force);
+        const currentVersion = browser.runtime.getManifest().version;
+        const browserKey = detectBrowserKey();
+        const latest = pickLatest(config, browserKey);
+        sendResponse({
+          ok: true,
+          config,
+          meta: {
+            browserKey,
+            currentVersion,
+            statusApplies: statusApplies(config, currentVersion),
+            updateAvailable: !!latest && compareVersions(latest, currentVersion) > 0,
+            latestVersion: latest,
+          },
+        });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
   if (msg.type === "ocf-open-setup") {
     browser.tabs.create({ url: browser.runtime.getURL("setup.html") });
     sendResponse({ ok: true });
