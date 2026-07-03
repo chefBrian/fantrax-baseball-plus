@@ -4,6 +4,6 @@
   "description": "Adds Statcast, MLB Video, and live MLB.tv links to Fantrax fantasy baseball players",
   "private": true,
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test tests/*.test.js"
   }
 }
