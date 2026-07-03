@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FantraxBaseball+ was uninstalled</title>
+  <style>
+    body { font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           max-width: 640px; margin: 48px auto; padding: 0 20px; color: #1a1d21; }
+    h1 { font-size: 22px; }
+    .status { padding: 12px 16px; border-radius: 8px; margin: 20px 0; display: none; }
+    .status--broken { display: block; background: #fef3c7; border: 1px solid #f59e0b; }
+    .status--fixed { display: block; background: #d1fae5; border: 1px solid #10b981; }
+    .stores a { display: inline-block; margin: 6px 12px 6px 0; font-weight: 600; }
+    .muted { color: #6b7280; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Sorry to see you go</h1>
+  <p>If FantraxBaseball+ stopped working, it's almost always because Fantrax
+     changed their site &mdash; not because the extension is broken for good.
+     Fixes typically ship within a day.</p>
+
+  <div id="status" class="status"></div>
+
+  <p class="stores">Reinstall any time:
+    <a href="https://chromewebstore.google.com/detail/fantraxbaseball+/andhmhfiodkbfmjiencoiglmdpolhomc">Chrome</a>
+    <a href="https://addons.mozilla.org/en-US/firefox/addon/fantraxbaseball/">Firefox</a>
+    <a href="https://microsoftedge.microsoft.com/addons/detail/fantraxbaseball/khbejbbnadofdhbnkppnedbdeabhfbhi">Edge</a>
+  </p>
+
+  <p>Something else wrong? <a href="https://github.com/chefBrian/fantrax-baseball-plus/issues">Open an issue</a>
+     &mdash; it goes straight to the developer.</p>
+
+  <p class="muted">This page collects no data. The version in the address bar
+     is only used by your browser, locally, to show the note above.</p>
+
+  <script>
+    // No analytics, no beacons. Reads the public config to show live status,
+    // and the ?v= param (client-side only) to tailor the message.
+    (async function () {
+      const params = new URLSearchParams(location.search);
+      const v = (params.get("v") || "").match(/^[\d.]{1,20}$/) ? params.get("v") : "";
+      const el = document.getElementById("status");
+      try {
+        const r = await fetch("https://raw.githubusercontent.com/chefBrian/fantrax-baseball-plus/main/config/remote-config.json");
+        const cfg = await r.json();
+        const s = cfg && cfg.status;
+        if (s && s.level !== "ok") {
+          el.className = "status status--broken";
+          el.textContent = "Known issue right now: " + (s.message || "Fantrax changed their site; a fix is in progress.");
+        } else if (v && s && s.fixedInVersion && cmp(v, s.fixedInVersion) < 0) {
+          el.className = "status status--fixed";
+          el.textContent = "You were on v" + v + ", which had a known issue - it's fixed in v" +
+            s.fixedInVersion + ". Reinstalling gets you the working version.";
+        }
+      } catch (e) { /* status box stays hidden */ }
+
+      function cmp(a, b) {
+        const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+          const x = pa[i] || 0, y = pb[i] || 0;
+          if (x !== y) return x < y ? -1 : 1;
+        }
+        return 0;
+      }
+    })();
+  </script>
+</body>
+</html>
