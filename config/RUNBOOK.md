@@ -15,7 +15,10 @@ installed extension reads that file directly. Rehearse in
      `"Fantrax changed their site on <date>. A fix is in progress - your browser will update automatically once it's out."`
    - `status.maxAffectedVersion`: the newest broken version (usually current)
    - `killSwitches`: set `true` for visibly broken features, e.g. `{"statcastPanel": true}`
-   Broken clients pick this up within ~5 minutes (forced revalidation).
+   Actively-affected clients converge within a browsing session (self-detection
+   forces a refetch; the specific message shows on their next page load). Installs
+   still holding a fresh `"ok"` config only refetch on the 6h TTL - propagation is
+   best-effort, not to-the-minute.
 3. **Fix**: code fix -> `./version.sh patch` -> commit -> `git tag vX.Y.Z` ->
    `git push origin main --tags`. Stores submit automatically.
 4. **As EACH store approves**, bump that store's entry in `latestVersion`
@@ -43,6 +46,7 @@ installed extension reads that file directly. Rehearse in
 
 ## Fire drill (run once after each phase ships)
 
-Push `status.level: "degraded"` + a test message to prod, confirm the banner
-appears in a personal install on Chrome AND Firefox within ~15 minutes,
+Push `status.level: "degraded"` + a test message to prod. In a personal install,
+clear `ocfConfigCache` in the background console first (else the 6h `"ok"` TTL
+delays it), reload Fantrax, and confirm the banner appears on Chrome AND Firefox,
 then run the all-clear. Ten minutes total; do not skip.
