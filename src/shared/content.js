@@ -321,7 +321,7 @@
     const schedule = await fetchTodaySchedule(forceRefresh);
     if (!schedule) return;
 
-    const game = schedule.get(teamStr);
+    const game = schedule.get(teamStr) || schedule.get(normalizeTeam(teamStr));
     if (!game || !game.isLive) return;
 
     const { url, title } = getLiveGameInfo(game);
@@ -378,7 +378,7 @@
     if (!teamStr) return;
     const schedule = await fetchTodaySchedule();
     if (!schedule) return;
-    const game = schedule.get(teamStr);
+    const game = schedule.get(teamStr) || schedule.get(normalizeTeam(teamStr));
     if (!game) return;
     const { url, title } = getLiveGameInfo(game);
     liveIcon.href = url;
